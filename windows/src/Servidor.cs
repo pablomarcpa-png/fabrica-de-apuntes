@@ -114,7 +114,7 @@ namespace FabricaDeApuntes
                 });
                 app = b.Build();
                 app.Run(Atender);
-                app.Start();
+                app.StartAsync().GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {
@@ -124,7 +124,7 @@ namespace FabricaDeApuntes
 
         public void Parar()
         {
-            try { app?.StopAsync(TimeSpan.FromSeconds(1)).Wait(2000); } catch { }
+            try { app?.StopAsync().Wait(2000); } catch { }
             GuardarYa();
         }
 
