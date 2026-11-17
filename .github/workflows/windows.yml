@@ -1,0 +1,47 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'windows/**'
+      - 'actualizacion/**'
+      - '.github/workflows/windows.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Pantalla de la app (la misma que se publica en la web)
+        shell: bash
+        run: |
+          mkdir -p windows/recursos
+          cp actualizacion/index.html windows/recursos/index.html
+          python -c "import json; print(json.load(open('actualizacion/version.json'))['version'])" > windows/recursos/version.txt
+
+      - name: Compilar
+        run: dotnet publish windows/FabricaDeApuntes.csproj -c Release -o windows/publicar
+
+      - name: Crear el instalador
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" windows\installer\setup.iss
+          Get-ChildItem windows\salida
+
+      - name: Publicar el instalador
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete windows --yes --cleanup-tag || true
+          gh release create windows windows/salida/Fabrica-de-Apuntes-Setup.exe --title "Instalador para Windows" --notes "Instalador de Fábrica de Apuntes para Windows." --latest=false
