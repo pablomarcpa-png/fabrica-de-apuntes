@@ -3870,7 +3870,7 @@ function emo(name) { return svgSpan(IC[name] || IC.doc, 'ico-i', 1.8); }
 function wxIcon(name) { return svgSpan(WX_ICONS[name] || WX_ICONS.nubes, 'ico wx-' + (WX_ICONS[name] ? name : 'nubes'), 1.6); }
 let toastTimer;
 function toast(msg, act) {
-  if (!act && typeof state !== 'undefined' && state.aiLast && !state.aiLast.shown && Date.now() - state.aiLast.at < 4000 && /(no (se )?(pud|ha pod|he pod)|fall|error|incomplet|límite|denegado|caducad|disponible|ninguna respuesta|demasiado|cortado|no devolvi)/i.test(String(msg))) { state.aiLast.shown = true; act = { label: 'Ver motivo', fn: () => aiWhy() }; }
+  if (!act && typeof state !== 'undefined' && state.aiLast && !state.aiLast.shown && Date.now() - state.aiLast.at < 4000 && /(no (se )?(pud|ha pod|he pod)|fall|error|incomplet|límite|denegado|caducad|disponible|ninguna respuesta|demasiado|cortado|no devolvi|saturad)/i.test(String(msg))) { state.aiLast.shown = true; act = { label: 'Ver motivo', fn: () => aiWhy() }; }
   const t = $('#toast'); t.textContent = msg; t.hidden = false;
   if (act && act.fn) {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = act.label || 'Deshacer';
@@ -8431,9 +8431,9 @@ function stSuggestDuration(sid) {
   if (rec.length >= 3) { const med = rec[Math.floor(rec.length / 2)], f = Math.min(90, Math.max(20, Math.round(med / 5) * 5)); return { ...stPresetFor(f), why: 'es la duración que sueles completar (mediana de ' + rec.length + ' sesiones)' }; }
   return { ...stPresetFor(25), why: 'punto de partida clásico; ajustaré la sugerencia según cómo vayas terminando' };
 }
-function stTodayBlocks() { const today = todayISO(); return ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day === today && !b.done && b.start && b.end).sort((a, b) => toMin(a.start) - toMin(b.start)); }
+function stTodayBlocks() { const today = todayISO(); return ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day === today && !b.done && ((b.start && b.end) || b.noTime)).sort((a, b) => (a.start || '99:99').localeCompare(b.start || '99:99')); }
 function stApplyBlock(b, silent) {
-  const st = state.st, sid = Object.keys(state.subjects).find((k) => state.subjects[k].name === b.subject) || '', dm = Math.min(120, Math.max(5, toMin(b.end) - toMin(b.start)));
+  const st = state.st, sid = Object.keys(state.subjects).find((k) => state.subjects[k].name === b.subject) || '', dm = Math.min(120, Math.max(5, blkDur(b)));
   st.blk = b.id; st.subj = sid; st.topic = (b.title || '').slice(0, 80); st.preset = 'otro'; st.cf = dm; st.cb = dm >= 45 ? 10 : 5;
   if (!silent) renderStudyTimer();
 }
@@ -8441,9 +8441,9 @@ function stPlannedPicker(list) {
   const st = state.st, nm = pfNowMin();
   return h('div', { class: 'st-plan' }, h('div', { class: 'st-tip-h', text: 'Planificado para hoy' }), h('p', { class: 'small muted', text: 'Elige una tarea del plan: se rellenan asignatura, tema y duración. Al terminar se marca como hecha.' }),
     h('div', { class: 'st-pl', role: 'group', 'aria-label': 'Tareas planificadas de hoy' }, list.map((b) => {
-      const on = st.blk === b.id, late = toMin(b.end) <= nm;
+      const on = st.blk === b.id, late = blkTimed(b) && toMin(b.end) <= nm;
       return h('button', { type: 'button', class: 'st-pi' + (on ? ' on' : ''), 'aria-pressed': on ? 'true' : 'false', onclick: () => stApplyBlock(b) },
-        h('span', { class: 'st-pt', text: b.start + '–' + b.end }), h('span', { class: 'st-pn' }, h('b', { text: b.title }), h('span', { class: 'small muted', text: (b.subject || '') + (late ? ' · pendiente' : '') })), on ? h('span', { class: 'chip-sm', text: 'Elegida' }) : null);
+        h('span', { class: 'st-pt', text: blkWhen(b) }), h('span', { class: 'st-pn' }, h('b', { text: b.title }), h('span', { class: 'small muted', text: (b.subject || '') + (late ? ' · pendiente' : '') })), on ? h('span', { class: 'chip-sm', text: 'Elegida' }) : null);
     }).concat([h('button', { type: 'button', class: 'st-pi free' + (!st.blk ? ' on' : ''), 'aria-pressed': !st.blk ? 'true' : 'false', onclick: () => { st.blk = null; renderStudyTimer(); } }, h('span', { class: 'st-pn' }, h('b', { text: 'Sesión libre' }), h('span', { class: 'small muted', text: 'Sin tarea del plan' })))])));
 }
 function stNowBlock() {
@@ -8929,8 +8929,8 @@ function renderStudy() {
 /* ---------- Estudio: calendario de mes, sesiones editables y ficha de examen/trabajo ---------- */
 state.stCal = { ym: todayISO().slice(0, 7), sel: todayISO() };
 const WD1 = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
-function stBlocks() { return ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day && b.start && b.end); }
-function stMin(b) { return Math.max(0, toMin(b.end) - toMin(b.start)); }
+function stBlocks() { return ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day && ((b.start && b.end) || b.noTime)); }
+function stMin(b) { return blkDur(b); }
 function stHrs(m) { const h1 = Math.round(m / 6) / 10; return String(h1).replace('.', ',') + ' h'; }
 function stProg(list) { const tot = list.reduce((a, b) => a + stMin(b), 0), dn = list.filter((b) => b.done).reduce((a, b) => a + stMin(b), 0); return { tot, dn, pct: tot ? Math.round(100 * dn / tot) : 0, n: list.length, nd: list.filter((b) => b.done).length }; }
 function planRefreshAll() {
@@ -9868,7 +9868,7 @@ function openSessModal(id, preset) {
     if (!noH && (!s0 || !e0 || toMin(e0) - toMin(s0) < 15)) { err.textContent = 'La hora de fin debe ser al menos 15 minutos posterior al inicio.'; err.hidden = false; return; }
     const cl = noH ? null : stBlocks().find((x) => x.id !== id && x.day === day && toMin(x.start) < toMin(e0) && toMin(x.end) > toMin(s0));
     if (cl && !armed) { armed = true; err.textContent = 'Se solapa con «' + cl.title + '» (' + cl.start + '–' + cl.end + '). Pulsa Guardar otra vez para guardarla igualmente.'; err.hidden = false; return; }
-    const lk = link.value, patch = { day, start: s0, end: e0, subject: sSel.value, title: ti.value.trim().slice(0, 80) || (lk.startsWith('e:') ? 'Estudio · ' + ((state.exams[lk.slice(2)] || {}).title || 'examen') : 'Estudio'), done: dn.checked, examId: lk.startsWith('e:') ? lk.slice(2) : '', taskId: lk.startsWith('t:') ? lk.slice(2) : '', note: nt.value.trim().slice(0, 1500), auto: false, mats: Array.from(mats) };
+    const lk = link.value, patch = { day, start: s0, end: e0, subject: sSel.value, title: ti.value.trim().slice(0, 80) || (lk.startsWith('e:') ? 'Estudio · ' + ((state.exams[lk.slice(2)] || {}).title || 'examen') : 'Estudio'), done: dn.checked, examId: lk.startsWith('e:') ? lk.slice(2) : '', taskId: lk.startsWith('t:') ? lk.slice(2) : '', note: nt.value.trim().slice(0, 1500), auto: false, fixed: true, mats: Array.from(mats) };
     if (noH) { patch.noTime = true; patch.dur = Number(du.value) || 60; } else delete patch.noTime;
     if (!patch.mats.length) delete patch.mats; if (!patch.examId) delete patch.examId; if (!patch.taskId) delete patch.taskId; if (!patch.note) delete patch.note;
     const all2 = ((state.plan && state.plan.blocks) || []).filter(Boolean); closeSessModal();
@@ -10168,8 +10168,8 @@ function esBuild(evs) {
   const c = cond(), today = todayISO(), now = new Date();
   const exams = examList().filter((e) => e.date >= today && state.subjects[e.subjectId]);
   const old = state.plan.blocks || [];
-  const keep = old.filter((b) => !(b.auto && !b.done && !b.cal));
-  const missed = old.filter((b) => b.auto && !b.done && !b.cal && b.day < today);
+  const keep = old.filter((b) => b.fixed || !(b.auto && !b.done && !b.cal));
+  const missed = old.filter((b) => !b.fixed && b.auto && !b.done && !b.cal && b.day < today);
   if (!exams.length) return { blocks: keep, missed, report: [], placed: 0 };
   const last = exams.reduce((m, e) => (e.date > m ? e.date : m), today), horizon = esDays(today, last) > 60 ? addDaysISO(today, 60) : last;
   const winS = toMin(c.start), winE = toMin(c.end), blk = c.block;
@@ -10201,9 +10201,9 @@ function esBuild(evs) {
   const sdLeft = (s, d) => days.filter((x) => x >= d && x >= s.from && x < s.e.date && capDay(x) > 0).length;
   for (const d of days) {
     const cap0 = capDay(d); if (cap0 <= 0) continue;
-    const locked = keep.filter((b) => b.day === d), lockedMin = locked.reduce((a, b) => a + Math.max(0, toMin(b.end) - toMin(b.start)), 0);
+    const locked = keep.filter((b) => b.day === d), lockedMin = locked.reduce((a, b) => a + blkDur(b), 0);
     let used = lockedMin + (d === today ? Math.max(0, sesToday - lockedMin) : 0);
-    const taken = busyOn(d, evs).map(([a, b]) => [a - 15, b + 15]).concat(locked.map((b) => [toMin(b.start) - 5, toMin(b.end) + c.brk]));
+    const taken = busyOn(d, evs).map(([a, b]) => [a - 15, b + 15]).concat(locked.filter(blkTimed).map((b) => [toMin(b.start) - 5, toMin(b.end) + c.brk]));
     const floor = d === today ? Math.max(winS, Math.ceil((now.getHours() * 60 + now.getMinutes() + 10) / 15) * 15) : winS;
     const act = st.filter((s) => s.e.date > d && d >= s.from).map((s) => {
       const left = esDays(d, s.e.date), inRev = left <= s.mg;
@@ -10264,7 +10264,7 @@ function esTryAuto() {
   if (pfOverdue().some((b) => !state.pf.ack[b.id])) return;
   const ex = examList().filter((e) => e.date >= todayISO() && state.subjects[e.subjectId]); if (!ex.length) return;
   const sig = esSig(), p = state.plan, today = todayISO();
-  const missed = (p.blocks || []).some((b) => b.auto && !b.done && !b.cal && b.day < today);
+  const missed = (p.blocks || []).some((b) => !b.fixed && b.auto && !b.done && !b.cal && b.day < today);
   if (sig === state.autoSigDone) return;
   if (p.autoSig !== sig || (p.autoDay !== today && !p.aiPlan) || missed) esPlan(false); else state.autoSigDone = sig;
 }
@@ -10515,7 +10515,7 @@ async function esAiPlan(W) {
   const ctxOn = W.useCtx !== false;
   if (mcp && ctxOn && routine().useCal) { try { evs = await fetchEvents(today, lastDay); hasCal = true; } catch (e) { evs = []; } }
   const old = (state.plan && state.plan.blocks) || [], subjNames = subsSel.map(([, s]) => s.name);
-  const isRep = (b) => !b.done && !b.cal && (general ? (b.ai && !b.examId && subjNames.includes(b.subject)) : (b.examId === exams[0].id && (b.auto || b.ai)));
+  const isRep = (b) => !b.done && !b.cal && !b.fixed && (general ? (b.ai && !b.examId && subjNames.includes(b.subject)) : (b.examId === exams[0].id && (b.auto || b.ai)));
   const replace = old.filter(isRep), keep = old.filter((b) => !isRep(b));
   // Si el estudiante ha dado instrucciones, mandan sobre la ventana y los días de descanso de «Mis condiciones» (que pasan a ser solo valores por defecto)
   const hasInstr = W.chat.some((m) => m.r === 'u');
@@ -10682,7 +10682,7 @@ function esOpenBlockApuntes(b) {
   spGo(sid, 'apuntes'); setTimeout(scrollToNotes, 100);
 }
 function esStartBlock(b) {
-  const sid = Object.keys(state.subjects).find((k) => state.subjects[k].name === b.subject) || '', dm = Math.min(120, Math.max(5, toMin(b.end) - toMin(b.start)));
+  const sid = Object.keys(state.subjects).find((k) => state.subjects[k].name === b.subject) || '', dm = Math.min(120, Math.max(5, blkDur(b)));
   setView('estudio'); if (state.tm) { toast('Ya tienes un temporizador en marcha.'); return; }
   tmStart({ sid, topic: b.title, target: dm, brk: dm >= 45 ? 10 : 5, blockId: b.id });
 }
@@ -10746,18 +10746,7 @@ function esPlanView(box) {
   if (p.coach && p.coach.summary) { const cb = h('div', { class: 'es-coach' }, h('h3', { text: 'Estrategia' }), h('p', { text: p.coach.summary })); if (p.coach.alerts && p.coach.alerts.length) cb.append(h('ul', { class: 'st-ins' }, p.coach.alerts.map((a) => h('li', { text: a })))); box.append(cb); }
   const blocks = (p.blocks || []).filter((b) => b.day >= today && b.day <= addDaysISO(today, 13)).sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start));
   if (!blocks.length) { box.append(h('p', { class: 'muted', text: 'Todavía no hay bloques en las próximas dos semanas. Pulsa «Organizar todo».' })); return; }
-  box.append(h('h3', { class: 'st-h3', text: 'Próximos 14 días' }));
-  const byDay = new Map(); blocks.forEach((b) => { if (!byDay.has(b.day)) byDay.set(b.day, []); byDay.get(b.day).push(b); });
-  for (const [day, list] of byDay) {
-    box.append(h('div', { class: 'ag-day' + (day === today ? ' today' : '') }, h('h3', { text: day === today ? 'Hoy' : daysUntil(day) === 1 ? 'Mañana' : fmtDay(day) }),
-      h('ul', { class: 'tasks' }, list.map((b) => h('li', { class: 'blk' + (b.done ? ' done' : '') },
-        h('input', { type: 'checkbox', checked: b.done ? true : false, 'aria-label': 'Hecho: ' + b.title, onchange: (e) => { habBlockEv(b, e.target.checked); put('plan/current', { ...state.plan, blocks: state.plan.blocks.map((x) => x.id === b.id ? { ...x, done: e.target.checked } : x) }); renderAgents(); renderHome(); } }),
-        h('span', { class: 'when', text: blkWhen(b) }),
-        h('div', {}, h('div', { class: 'blk-t', text: b.title }),
-          h('div', { class: 't-meta' }, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), h('span', { text: b.subject }), b.kind && ES_KIND[b.kind] ? h('span', { class: 'chip-ev', text: ES_KIND[b.kind] }) : null, b.cal ? h('span', { class: 'due', text: 'En tu calendario' }) : null),
-          b.tip ? h('div', { class: 'es-tip', text: b.tip }) : null,
-          !b.done ? h('div', { class: 'es-bact' }, !blkTimed(b) ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => blkPickTime(b), text: 'Elegir hora' }) : null, h('button', { class: 'btn sm', type: 'button', onclick: () => esStartBlock(b), text: 'Empezar' }), h('button', { class: 'btn sm', type: 'button', onclick: () => esOpenBlockApuntes(b), text: b.libId ? 'Abrir apuntes' : 'Ir a la asignatura' })) : null, blkTools(b)))))));
-  }
+  blkListView(box, blocks, today);
   const pend = (p.blocks || []).filter((b) => !b.cal && !b.done && b.auto && blkTimed(b)).length;
   if (mcp) box.append(h('div', { class: 'toolbar' }, h('button', { class: 'btn', type: 'button', disabled: !pend || state.planBusy, onclick: () => { state.planConfirm = true; addPlanToCalendar(); }, text: pend ? 'Añadir ' + pend + (pend === 1 ? ' bloque' : ' bloques') + ' a Google Calendar' : 'Todo en tu calendario' })));
 }
@@ -10897,7 +10886,7 @@ async function plcApply() {
   const P = state.plc, d = P.draft; const chosen = d ? d.changes.filter((x) => x.ok) : []; if (!d || !chosen.length) return;
   const prev = ((state.plan && state.plan.blocks) || []).filter(Boolean);
   let list = prev.map((b) => ({ ...b }));
-  chosen.forEach((x) => { if (x.op === 'quitar') list = list.filter((b) => b.id !== x.before.id); else if (x.op === 'mover') list = list.map((b) => (b.id === x.before.id ? x.after : b)); else if (x.op === 'anadir') list.push(x.after); });
+  chosen.forEach((x) => { if (x.op === 'quitar') list = list.filter((b) => b.id !== x.before.id); else if (x.op === 'mover') list = list.map((b) => (b.id === x.before.id ? { ...x.after, fixed: true } : b)); else if (x.op === 'anadir') list.push({ ...x.after, fixed: true }); });
   stSaveAll(list);
   const n = chosen.length; P.draft = null; P.text = ''; plcClose(); toast('Plan cambiado: ' + n + (n === 1 ? ' cambio aplicado.' : ' cambios aplicados.'), { label: 'Deshacer', fn: () => { stSaveAll(prev); } }); blkRefresh();
 }
@@ -10917,12 +10906,94 @@ function stSaveAll(blocks) {
   wr.catch(() => {});
   return Promise.resolve();
 }
-async function blkMoveTomorrow(b0) {
-  const all = ((state.plan && state.plan.blocks) || []).filter(Boolean), b = all.find((x) => x.id === b0.id); if (!b) return;
-  const today = todayISO(), day = addDaysISO(b.day < today ? today : b.day, 1); let warn = '';
-  if (blkTimed(b)) { let bz = []; try { bz = busyOn(day, undefined, false); } catch (x) {} const taken = bz.concat(all.filter((x) => x.id !== b.id && x.day === day && blkTimed(x)).map((x) => [toMin(x.start), toMin(x.end)])); if (clash(toMin(b.start), toMin(b.end), taken)) warn = ' (se solapa con algo de ese día)'; }
-  await stSaveAll(all.map((x) => (x.id === b.id ? { ...x, day, auto: false } : x)));
-  toast('Movido a ' + fmtDay(day) + warn + '.', { label: 'Deshacer', fn: () => { stSaveAll(all); } });
+/* ---------- Lista del plan: seleccionar varios, mover al día, arrastrar y «Fijo» ---------- */
+state.plSel = { on: false, ids: new Set() };
+let blkDragIds = null;
+function planAll() { return ((state.plan && state.plan.blocks) || []).filter(Boolean); }
+function blkMoveDay(ids, day) {
+  const all = planAll(), set = new Set(ids), moved = all.filter((b) => set.has(b.id));
+  if (!moved.length || !/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return;
+  let bz = []; try { bz = busyOn(day, undefined, false); } catch (e) {}
+  const taken = bz.concat(all.filter((x) => !set.has(x.id) && x.day === day && blkTimed(x)).map((x) => [toMin(x.start), toMin(x.end)]));
+  const over = moved.filter((b) => blkTimed(b) && clash(toMin(b.start), toMin(b.end), taken)).length;
+  stSaveAll(all.map((b) => (set.has(b.id) ? { ...b, day, fixed: true } : b)));
+  toast((moved.length === 1 ? 'Movido' : moved.length + ' bloques movidos') + ' a ' + fmtDay(day) + (over ? ' (' + (over === 1 ? 'se solapa' : over + ' se solapan') + ' con algo de ese día)' : '') + '.', { label: 'Deshacer', fn: () => { stSaveAll(all); } });
+}
+function blkMoveTomorrow(b0) { const b = planAll().find((x) => x.id === b0.id); if (!b) return; const today = todayISO(); blkMoveDay([b.id], addDaysISO(b.day < today ? today : b.day, 1)); }
+function blkSelDone() { state.plSel.on = false; state.plSel.ids.clear(); }
+function blkMovePick(ids) {
+  const all = planAll(), bl = all.filter((b) => ids.includes(b.id)); if (!bl.length) return;
+  const old = $('#blkMv'); if (old) old.remove(); const close = () => { const m = $('#blkMv'); if (m) m.remove(); };
+  const today = todayISO(), first = bl.map((b) => b.day).sort()[0];
+  const da = h('input', { type: 'date', 'aria-label': 'Día de destino' }); da.value = addDaysISO(first < today ? today : first, 1);
+  const go = (d) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(d || '')) return; close(); blkSelDone(); blkMoveDay(ids, d); };
+  let mon = addDaysISO(today, 1); while (new Date(mon + 'T12:00:00').getDay() !== 1) mon = addDaysISO(mon, 1);
+  const q = (t, d) => h('button', { class: 'btn', type: 'button', onclick: () => go(d), text: t });
+  document.body.append(h('div', { class: 'modal-bg', id: 'blkMv', style: 'z-index:125', onclick: (e) => { if (e.target.id === 'blkMv') close(); } },
+    h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Mover al día' },
+      h('div', { class: 'sec-head' }, h('div', {}, h('h2', { text: 'Mover al día…' }), h('p', { class: 'small', text: bl.length === 1 ? bl[0].title : bl.length + ' bloques · conservan su hora' })), h('button', { class: 'btn sm', type: 'button', 'aria-label': 'Cerrar', onclick: close, text: '×' })),
+      h('div', { class: 'wz-chips' }, q('Hoy', today), q('Mañana', addDaysISO(today, 1)), q('Pasado mañana', addDaysISO(today, 2)), q('Próximo lunes', mon)),
+      h('form', { class: 'es-mform', onsubmit: (e) => { e.preventDefault(); go(da.value); } }, esField('O elige otro día', da),
+        h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'submit', text: 'Mover' }), h('button', { class: 'btn', type: 'button', onclick: close, text: 'Cancelar' }))))));
+}
+function blkBulkNoHour(ids) {
+  const all = planAll(), set = new Set(ids); blkSelDone();
+  stSaveAll(all.map((b) => { if (!set.has(b.id) || !blkTimed(b)) return b; const nb = { ...b, start: '', end: '', noTime: true, dur: blkDur(b), fixed: true }; return nb; }));
+  toast('Bloques sin hora: elegirás la hora ese día.', { label: 'Deshacer', fn: () => { stSaveAll(all); } });
+}
+function blkBulkRemove(ids) {
+  const all = planAll(), set = new Set(ids), n = all.filter((b) => set.has(b.id)).length; blkSelDone();
+  stSaveAll(all.filter((b) => !set.has(b.id)));
+  toast(n + (n === 1 ? ' bloque quitado.' : ' bloques quitados.'), { label: 'Deshacer', fn: () => { stSaveAll(all); } });
+}
+function blkUnfix(b0) { const all = planAll(); stSaveAll(all.map((x) => (x.id === b0.id ? { ...x, fixed: false } : x))); toast('Soltado: «Reorganizar todo» ya puede moverlo.'); }
+function blkDndStrip(show) {
+  const old = $('#blkDnd'); if (old) old.remove(); if (!show) return;
+  const today = todayISO(), strip = h('div', { id: 'blkDnd', class: 'blk-dnd', 'aria-hidden': 'true' }, h('span', { class: 'small', text: 'Suelta sobre un día:' }));
+  for (let i = 0; i < 14; i++) {
+    const d = addDaysISO(today, i), el = h('div', { class: 'blk-dd', 'data-day': d, text: i === 0 ? 'Hoy' : i === 1 ? 'Mañ.' : fmtDay(d).replace(/,/, '') });
+    el.ondragover = (e) => { e.preventDefault(); el.classList.add('over'); }; el.ondragleave = () => el.classList.remove('over');
+    el.ondrop = (e) => { e.preventDefault(); blkDrop(d); };
+    strip.append(el);
+  }
+  document.body.append(strip);
+}
+function blkDrop(day) { const ids = blkDragIds; blkDragIds = null; blkDndStrip(false); if (ids && ids.length) blkMoveDay(ids, day); }
+function blkSelBar() {
+  const S = state.plSel, n = S.ids.size, ids = () => Array.from(S.ids);
+  return h('div', { class: 'blk-selbar', role: 'toolbar', 'aria-label': 'Acciones sobre los bloques seleccionados' }, h('b', { text: n ? n + (n === 1 ? ' seleccionado' : ' seleccionados') : 'Marca los bloques que quieras' }),
+    h('button', { class: 'btn sm primary', type: 'button', disabled: !n, onclick: () => blkMovePick(ids()), text: 'Mover al día…' }),
+    h('button', { class: 'btn sm', type: 'button', disabled: !n, onclick: () => blkBulkNoHour(ids()), text: 'Sin hora' }),
+    h('button', { class: 'btn sm danger', type: 'button', disabled: !n, onclick: () => blkBulkRemove(ids()), text: 'Quitar' }));
+}
+function blkRow(b) {
+  const S = state.plSel;
+  const li = h('li', { class: 'blk' + (b.done ? ' done' : '') + (S.on && S.ids.has(b.id) ? ' sel' : ''), draggable: 'true' },
+    h('span', { class: 'blk-cbs' }, S.on ? h('input', { type: 'checkbox', class: 'blk-sel', checked: S.ids.has(b.id) ? true : false, 'aria-label': 'Seleccionar: ' + b.title, onchange: (e) => { if (e.target.checked) S.ids.add(b.id); else S.ids.delete(b.id); renderAgents(); } }) : null,
+      h('input', { type: 'checkbox', checked: b.done ? true : false, 'aria-label': 'Hecho: ' + b.title, onchange: (e) => { habBlockEv(b, e.target.checked); put('plan/current', { ...state.plan, blocks: state.plan.blocks.map((x) => x.id === b.id ? { ...x, done: e.target.checked } : x) }); renderAgents(); renderHome(); } })),
+    h('span', { class: 'when', text: blkWhen(b) }),
+    h('div', {}, h('div', { class: 'blk-t', text: b.title }),
+      h('div', { class: 't-meta' }, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), h('span', { text: b.subject }), b.kind && ES_KIND[b.kind] ? h('span', { class: 'chip-ev', text: ES_KIND[b.kind] }) : null,
+        b.fixed ? h('button', { class: 'chip-ev blk-fixed', type: 'button', title: 'Fijo: ni «Reorganizar todo» ni la IA lo mueven. Púlsalo para soltarlo.', onclick: () => blkUnfix(b), text: 'Fijo' }) : null, b.cal ? h('span', { class: 'due', text: 'En tu calendario' }) : null),
+      b.tip ? h('div', { class: 'es-tip', text: b.tip }) : null,
+      !b.done ? h('div', { class: 'es-bact' }, !blkTimed(b) ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => blkPickTime(b), text: 'Elegir hora' }) : null, h('button', { class: 'btn sm', type: 'button', onclick: () => esStartBlock(b), text: 'Empezar' }), h('button', { class: 'btn sm', type: 'button', onclick: () => esOpenBlockApuntes(b), text: b.libId ? 'Abrir apuntes' : 'Ir a la asignatura' })) : null, blkTools(b)));
+  li.ondragstart = (e) => { blkDragIds = S.on && S.ids.has(b.id) ? Array.from(S.ids) : [b.id]; try { e.dataTransfer.setData('text/plain', blkDragIds.join(',')); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} li.classList.add('dragging'); blkDndStrip(true); };
+  li.ondragend = () => { blkDragIds = null; li.classList.remove('dragging'); blkDndStrip(false); };
+  return li;
+}
+function blkListView(box, blocks, today) {
+  const S = state.plSel;
+  box.append(h('div', { class: 'blk-bar' }, h('h3', { class: 'st-h3', text: 'Próximos 14 días' }), h('button', { class: 'btn sm', type: 'button', 'aria-pressed': S.on ? 'true' : 'false', onclick: () => { S.on = !S.on; S.ids.clear(); renderAgents(); }, text: S.on ? 'Cancelar selección' : 'Seleccionar varios' })));
+  if (S.on) box.append(blkSelBar());
+  const byDay = new Map(); blocks.forEach((b) => { if (!byDay.has(b.day)) byDay.set(b.day, []); byDay.get(b.day).push(b); });
+  for (const [day, list] of byDay) {
+    const el = h('div', { class: 'ag-day' + (day === today ? ' today' : ''), 'data-day': day },
+      h('h3', {}, day === today ? 'Hoy' : daysUntil(day) === 1 ? 'Mañana' : fmtDay(day), S.on ? h('button', { class: 'btn sm', type: 'button', style: 'margin-left:10px', onclick: () => { list.forEach((b) => S.ids.add(b.id)); renderAgents(); }, text: 'Elegir todo el día' }) : null),
+      h('ul', { class: 'tasks' }, list.map(blkRow)));
+    el.ondragover = (e) => { if (blkDragIds) { e.preventDefault(); el.classList.add('dnd-over'); } }; el.ondragleave = () => el.classList.remove('dnd-over');
+    el.ondrop = (e) => { e.preventDefault(); el.classList.remove('dnd-over'); blkDrop(day); };
+    box.append(el);
+  }
 }
 async function blkRemove(b0) {
   const all = ((state.plan && state.plan.blocks) || []).filter(Boolean), b = all.find((x) => x.id === b0.id); if (!b) return;
@@ -19940,6 +20011,7 @@ window.ntHubOpen = function (tab) {
     const num = h('select', { class: 'ak-in', 'aria-label': 'Cuántas tarjetas' }, [10, 20, 30, 40].map((n) => h('option', { value: n, text: n + ' tarjetas', ...(n === (u.n || 20) ? { selected: true } : {}) }))), kind = h('select', { class: 'ak-in', 'aria-label': 'Tipo' }, [['mixta', 'Mezcla de básicas y cloze'], ['basic', 'Solo pregunta y respuesta'], ['cloze', 'Solo cloze (huecos)']].map(([v, l]) => h('option', { value: v, text: l, ...(v === (u.kind || 'mixta') ? { selected: true } : {}) })));
     num.onchange = () => { u.n = Number(num.value); }; kind.onchange = () => { u.kind = kind.value; };
     const go = async () => {
+      aiRemember('Crear las tarjetas con IA', go);
       if (!sample) { toast('La IA no está disponible en esta vista.'); return; }
       const mat = (items.filter((l) => sel.has(l.id)).map((l) => '--- ' + (l.title || l.fileName || 'Apunte') + ' ---\n' + l.text).join('\n\n') + '\n\n' + (u.paste || '')).trim().slice(0, 28000);
       if (mat.length < 80) { toast('Elige algún apunte de la biblioteca o pega un texto.'); return; }
@@ -20056,6 +20128,7 @@ window.ntHubOpen = function (tab) {
     catch (e) { u.busy = false; u.msg = ''; toast('No se pudo leer el PDF. Prueba a pegar el texto.'); paint(); }
   }
   async function run(u, text) {
+    aiRemember('Analizar la guía docente', () => run(u, text));
     if (!sample) { toast('La IA no está disponible en esta vista.'); return; }
     const tx = String(text || '').trim(); if (tx.length < 80) { toast('El documento no tiene texto suficiente.'); u.busy = false; paint(); return; }
     u.busy = true; u.msg = 'La IA está leyendo la guía… puede tardar un minuto.'; paint();
@@ -20410,6 +20483,7 @@ window.ntHubOpen = function (tab) {
     const th = h('div', { class: 'mm-th' }, Object.entries(THEMES).map(([k, T]) => h('button', { type: 'button', 'aria-pressed': String(c.theme === k), onclick: () => { c.theme = k; vConfig(u); } }, h('i', { style: 'background:' + T.bg + ';border:1px solid #0002' }, ...T.pal.slice(0, 4).map((x) => h('s', { style: 'background:' + x }))), T.name)));
     const busy = !!c.busy;
     const go = async () => {
+      aiRemember('Crear el mapa mental', go);
       const title = c.title.trim() || c.central.trim() || (c.source === 'topic' && c.topic.trim().slice(0, 50)) || 'Mapa mental', central = c.central.trim() || title;
       if (c.source === 'blank') { const m = newMap(u.sid, { title, layout: c.layout, theme: c.theme, root: { id: nid(), t: central, ic: '🧠', ch: [] } }); MM.maps[m.id] = m; await saveNow(m); openMap(m.id); return; }
       if (c.source === 'esquema') { const r = fromText(es.text, central); if (!r) { toast('No pude leer el esquema.'); return; } const m = newMap(u.sid, { title, layout: c.layout, theme: c.theme, root: norm(r, 0, { n: 900 }) }); MM.maps[m.id] = m; await saveNow(m); openMap(m.id); return; }
@@ -22521,7 +22595,7 @@ function watch(el) {
 document.querySelectorAll('.view[id^="view-"]').forEach(watch);
 /* 2. Completar: check animado y fila que se contrae (antes de que la app re-pinte) */
 document.addEventListener('change', (e) => {
-  const cb = e.target; if (!cb || cb.type !== 'checkbox' || !cb.checked || cb.__faGo) { if (cb) delete cb.__faGo; return; }
+  const cb = e.target; if (!cb || cb.type !== 'checkbox' || !cb.checked || cb.__faGo || cb.classList.contains('blk-sel')) { if (cb) delete cb.__faGo; return; }
   const row = cb.closest('li.task,.blk'); if (!row || RM()) return;
   e.stopImmediatePropagation();
   row.style.maxHeight = row.offsetHeight + 'px'; row.style.overflow = 'hidden'; void row.offsetHeight; row.classList.add('fa-done');
@@ -22768,6 +22842,8 @@ tkClash = function (day, start, end, skipId) {
 @media (min-width:600px){.modal{border-radius:28px!important;box-shadow:0 30px 70px -24px rgba(10,25,60,.45),0 0 0 1px color-mix(in srgb,var(--fg) 6%,transparent)}}
 .plc-bar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}.plc-bar .plc-in{flex:1 1 260px;min-width:0;min-height:44px;box-sizing:border-box}.blk-tools{opacity:.95}.blk-tools .btn.danger{margin-left:auto}#planChg .st-ins{list-style:none;padding-left:0}#planChg .st-ins li{margin:6px 0}#planChg .st-ins li input{margin:0 8px 0 0;vertical-align:middle;width:18px;height:18px}
 #planChg .modal{max-height:92vh}#planChg #plcBody{display:flex;flex-direction:column;gap:12px;min-height:0}.plc-sum{margin:0}.plc-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.plc-hd b{font-size:14px}.plc-all{display:flex;gap:6px}.plc-list{overflow:auto;max-height:46vh;border:1px solid var(--line);border-radius:16px;background:var(--bg);-webkit-overflow-scrolling:touch}.plc-row{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}.plc-row:last-child{border-bottom:0}.plc-row input{margin:2px 0 0;width:18px;height:18px;flex:none}.plc-chip{flex:none;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-top:1px;min-width:52px;text-align:center}.plc-chip.plc-mv{background:var(--accent-soft);color:var(--accent)}.plc-chip.plc-rm{background:color-mix(in srgb,#e5484d 14%,transparent);color:#c93a3f}.plc-chip.plc-ad{background:var(--green-bg);color:var(--green)}.plc-tx{display:flex;flex-direction:column;gap:2px;min-width:0}.plc-t{font-size:14.5px;line-height:1.3}.plc-w{font-size:12.5px;color:var(--muted)}.plc-w.now{color:var(--fg);font-weight:600}.plc-foot{display:flex;gap:8px;flex-wrap:wrap}
+.blk-bar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-top:18px}.blk-bar .st-h3{margin:0}.blk-selbar{position:sticky;top:8px;z-index:6;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin:10px 0;background:var(--surface);border:1px solid var(--accent);border-radius:16px;box-shadow:0 10px 30px -12px rgba(10,25,60,.35)}.blk-selbar b{flex:1 1 140px;font-size:14px}li.blk.sel{background:var(--accent-soft);border-radius:12px}li.blk .blk-sel,li.blk>input[type=checkbox]{flex:none}li.blk.dragging{opacity:.45}li.blk[draggable=true]{cursor:grab}.ag-day.dnd-over{outline:2px dashed var(--accent);outline-offset:4px;border-radius:14px}.blk-fixed{cursor:pointer;border:0;font:inherit}.blk-dnd{position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:140;display:flex;gap:6px;align-items:center;padding:10px 12px;max-width:94vw;overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:0 18px 40px -14px rgba(10,25,60,.45)}.blk-dd{flex:none;min-width:54px;text-align:center;padding:10px 8px;border:1px dashed var(--line);border-radius:12px;font-size:12.5px;font-weight:600;background:var(--bg)}.blk-dd.over{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.blk-cbs{display:flex;gap:10px;align-items:flex-start}@media (max-width:520px){li.blk{grid-template-columns:auto minmax(0,1fr)}li.blk>div:last-child{grid-column:1/-1}li.blk .when{align-self:center;padding-top:0}.blk-selbar{top:4px}}
 /* Cabecera del calendario: los controles no se pisan */
 #view-calendario .cal2 .cal-hd{min-width:0;flex-wrap:nowrap}
 #view-calendario .cal2 .cal-hd .cal-rb{flex:none}
