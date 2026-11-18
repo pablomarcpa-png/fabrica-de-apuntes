@@ -22437,7 +22437,9 @@ tkClash = function (day, start, end, skipId) {
 .cal-wide .wk-day .row .title{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .cal-wide .wk-day .row .sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* Cabecera del calendario: los controles no se pisan */
-#view-calendario .cal2 .cal-hd .cal-title{min-width:0!important;font-size:clamp(22px,2.6vw,28px)!important;white-space:nowrap}
+#view-calendario .cal2 .cal-hd{min-width:0;flex-wrap:nowrap}
+#view-calendario .cal2 .cal-hd .cal-rb{flex:none}
+#view-calendario .cal2 .cal-hd .cal-title{min-width:0!important;flex:1 1 0!important;font-size:clamp(20px,2.6vw,28px)!important;white-space:normal!important;overflow-wrap:anywhere;text-wrap:balance;line-height:1.15}
 #view-calendario .cal2 .cal-sub{flex-wrap:wrap}
 #view-calendario .cal2 .cal-sub .btn{white-space:nowrap}
 /* Tarjeta del mes en Inicio: la navegación nunca se corta */
