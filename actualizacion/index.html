@@ -10736,42 +10736,49 @@ function blkPickTime(b0) {
 }
 
 /* ---------- Pedir cambios concretos a la IA sobre el plan ---------- */
-state.pc = { text: '', busy: false, draft: null, err: '' };
-const PC_CHIPS = ['Pasa los bloques del viernes al sábado.', 'Quita los bloques de repaso de esta semana.', 'Pon los bloques de esta semana sin hora, solo el día.', 'Mueve el bloque de mañana a la tarde.', 'Añade un bloque de práctica el lunes.'];
-function pcClose() { const m = $('#planChg'); if (m) m.remove(); }
+state.plc = { text: '', busy: false, draft: null, err: '' };
+const PLC_CHIPS = ['Pasa los bloques del viernes al sábado.', 'Quita los bloques de repaso de esta semana.', 'Pon los bloques de esta semana sin hora, solo el día.', 'Mueve el bloque de mañana a la tarde.', 'Añade un bloque de práctica el lunes.'];
+function plcClose() { const m = $('#planChg'); if (m) m.remove(); }
 function openPlanChange(pre, auto) {
-  pcClose(); const P = state.pc; P.draft = null; P.err = ''; P.busy = false; if (typeof pre === 'string') P.text = pre;
-  document.body.append(h('div', { class: 'modal-bg', id: 'planChg', onclick: (e) => { if (e.target.id === 'planChg') pcClose(); } },
-    h('div', { class: 'modal wz', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Pedir cambios a la IA' }, h('div', { id: 'pcBody' }))));
-  pcPaint(); if (auto === true && String(P.text || '').trim() && sample) pcRun();
+  plcClose(); const P = state.plc; P.draft = null; P.err = ''; P.busy = false; if (typeof pre === 'string') P.text = pre;
+  document.body.append(h('div', { class: 'modal-bg', id: 'planChg', onclick: (e) => { if (e.target.id === 'planChg') plcClose(); } },
+    h('div', { class: 'modal wz', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Pedir cambios a la IA' }, h('div', { id: 'plcBody' }))));
+  plcPaint(); if (auto === true && String(P.text || '').trim() && sample) plcRun();
 }
-function pcWhenTxt(b) { return fmtDay(b.day) + ' · ' + blkWhen(b); }
-function pcPaint() {
-  const body = $('#pcBody'); if (!body) return; const P = state.pc, d = P.draft;
-  const head = h('div', { class: 'sec-head' }, h('div', {}, h('h2', { text: d ? 'Cambios propuestos' : 'Pedir cambios a la IA' }), h('p', { class: 'small', text: d ? 'Revisa antes de aplicar. No se toca nada hasta que pulses Aplicar.' : 'Dile qué quieres cambiar de tu plan; solo toca lo que pidas.' })), h('button', { class: 'btn sm', type: 'button', 'aria-label': 'Cerrar', onclick: pcClose, text: '×' }));
+function plcWhenTxt(b) { return fmtDay(b.day) + ' · ' + blkWhen(b); }
+function plcPaint() {
+  const body = $('#plcBody'); if (!body) return; const P = state.plc, d = P.draft;
+  const head = h('div', { class: 'sec-head' }, h('div', {}, h('h2', { text: d ? 'Cambios propuestos' : 'Pedir cambios a la IA' }), h('p', { class: 'small', text: d ? 'Revisa antes de aplicar. No se toca nada hasta que pulses Aplicar.' : 'Dile qué quieres cambiar de tu plan; solo toca lo que pidas.' })), h('button', { class: 'btn sm', type: 'button', 'aria-label': 'Cerrar', onclick: plcClose, text: '×' }));
   if (!d) {
     const ta = h('textarea', { rows: 4, maxlength: 2000, placeholder: 'Ej.: Pasa el bloque del viernes al sábado por la mañana. Quita el repaso del domingo. Pon los bloques de esta semana sin hora.', 'aria-label': 'Qué quieres cambiar' }); ta.value = P.text || ''; ta.oninput = () => { P.text = ta.value; };
     body.replaceChildren(head,
-      h('div', { class: 'wz-chips' }, PC_CHIPS.map((t) => h('button', { class: 'btn sm', type: 'button', onclick: () => { P.text = (P.text ? P.text.trim() + ' ' : '') + t; ta.value = P.text; ta.focus(); }, text: t }))),
+      h('div', { class: 'wz-chips' }, PLC_CHIPS.map((t) => h('button', { class: 'btn sm', type: 'button', onclick: () => { P.text = (P.text ? P.text.trim() + ' ' : '') + t; ta.value = P.text; ta.focus(); }, text: t }))),
       ta, P.err ? h('p', { class: 'mu-err', role: 'alert', text: P.err }) : null,
-      h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', disabled: P.busy || !sample, onclick: pcRun, text: P.busy ? 'La IA está pensando…' : 'Proponer cambios' }), !sample ? h('span', { class: 'small', text: 'La IA no está disponible en esta vista.' }) : null));
+      h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', disabled: P.busy || !sample, onclick: plcRun, text: P.busy ? 'La IA está pensando…' : 'Proponer cambios' }), !sample ? h('span', { class: 'small', text: 'La IA no está disponible en esta vista.' }) : null));
     setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 30);
     return;
   }
-  const li = d.changes.map((x) => {
-    if (x.op === 'quitar') return h('li', {}, pcChk(x, d), h('b', { text: 'Quitar: ' }), x.before.subject + ' · ' + x.before.title + ' (' + pcWhenTxt(x.before) + ')', x.before.cal ? h('span', { class: 'small', text: ' · también se quitará de tu Google Calendar' }) : null);
-    if (x.op === 'anadir') return h('li', {}, pcChk(x, d), h('b', { text: 'Añadir: ' }), x.after.subject + ' · ' + x.after.title + ' (' + pcWhenTxt(x.after) + ')');
-    return h('li', {}, pcChk(x, d), h('b', { text: 'Cambiar: ' }), x.after.subject + ' · ' + x.after.title + ' — ' + pcWhenTxt(x.before) + ' → ' + pcWhenTxt(x.after), x.before.cal ? h('span', { class: 'small', text: ' · se actualizará también en Google Calendar' }) : null);
-  });
+  const OPL = { quitar: ['Quitar', 'plc-rm'], mover: ['Mover', 'plc-mv'], anadir: ['Añadir', 'plc-ad'] }, nm = { quitar: 0, mover: 0, anadir: 0 };
+  d.changes.forEach((x) => { nm[x.op] = (nm[x.op] || 0) + 1; });
+  const sumTxt = [nm.mover ? nm.mover + (nm.mover === 1 ? ' movido' : ' movidos') : '', nm.quitar ? nm.quitar + (nm.quitar === 1 ? ' quitado' : ' quitados') : '', nm.anadir ? nm.anadir + (nm.anadir === 1 ? ' añadido' : ' añadidos') : ''].filter(Boolean).join(' · ');
+  const row = (x) => {
+    const b = x.after || x.before, op = OPL[x.op] || OPL.mover;
+    const lines = x.op === 'mover' ? [h('span', { class: 'plc-w', text: 'Antes: ' + plcWhenTxt(x.before) }), h('span', { class: 'plc-w now', text: 'Ahora: ' + plcWhenTxt(x.after) })] : [h('span', { class: 'plc-w', text: plcWhenTxt(b) })];
+    return h('label', { class: 'plc-row' }, plcChk(x, d), h('span', { class: 'plc-chip ' + op[1], text: op[0] }),
+      h('span', { class: 'plc-tx' }, h('b', { class: 'plc-t' }, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), ' ' + b.title), ...lines, x.before && x.before.cal ? h('span', { class: 'plc-w', text: 'También cambia en tu Google Calendar' }) : null));
+  };
+  const sorted = d.changes.slice().sort((a, b) => ((a.after || a.before).day + ((a.after || a.before).start || '')).localeCompare((b.after || b.before).day + ((b.after || b.before).start || '')));
+  const setAll = (v) => { d.changes.forEach((x) => { x.ok = v; }); plcPaint(); };
   body.replaceChildren(head,
-    d.summary ? h('div', { class: 'es-coach' }, h('p', { text: d.summary })) : null,
-    d.changes.length ? h('ul', { class: 'st-ins' }, li) : h('p', { class: 'note', text: 'No he podido aplicar ningún cambio válido con lo que has pedido. Prueba a ser más concreto (día, hora o bloque).' }),
+    d.summary ? h('div', { class: 'es-coach plc-sum' }, h('p', { text: d.summary })) : null,
+    d.changes.length ? h('div', { class: 'plc-hd' }, h('b', { text: d.changes.length + (d.changes.length === 1 ? ' cambio' : ' cambios') + (sumTxt ? ' · ' + sumTxt : '') }), h('span', { class: 'plc-all' }, h('button', { class: 'btn sm', type: 'button', onclick: () => setAll(true), text: 'Marcar todos' }), h('button', { class: 'btn sm', type: 'button', onclick: () => setAll(false), text: 'Desmarcar todos' }))) : null,
+    d.changes.length ? h('div', { class: 'plc-list' }, sorted.map(row)) : h('p', { class: 'note', text: 'No he podido aplicar ningún cambio válido con lo que has pedido. Prueba a ser más concreto (día, hora o bloque).' }),
     d.dropped ? h('p', { class: 'small', text: d.dropped + (d.dropped === 1 ? ' cambio descartado' : ' cambios descartados') + ' por chocar con tu agenda o no ser válidos.' }) : null,
-    h('div', { class: 'toolbar' }, d.changes.length ? h('button', { class: 'btn primary', type: 'button', id: 'pcApply', onclick: pcApply, text: pcApplyTxt(d) }) : null, h('button', { class: 'btn', type: 'button', onclick: () => { P.draft = null; pcPaint(); }, text: 'Cambiar la petición' })));
+    h('div', { class: 'plc-foot' }, d.changes.length ? h('button', { class: 'btn primary', type: 'button', id: 'plcApply', disabled: !d.changes.some((x) => x.ok), onclick: plcApply, text: plcApplyTxt(d) }) : null, h('button', { class: 'btn', type: 'button', onclick: () => { P.draft = null; plcPaint(); }, text: 'Cambiar la petición' })));
 }
-async function pcRun() {
-  const P = state.pc; if (P.busy || !sample) return; const text = String(P.text || '').trim(); if (!text) { P.err = 'Escribe qué quieres cambiar.'; pcPaint(); return; }
-  P.busy = true; P.err = ''; pcPaint();
+async function plcRun() {
+  const P = state.plc; if (P.busy || !sample) return; const text = String(P.text || '').trim(); if (!text) { P.err = 'Escribe qué quieres cambiar.'; plcPaint(); return; }
+  P.busy = true; P.err = ''; plcPaint();
   try {
     const today = todayISO(), now = new Date(), lastDay = addDaysISO(today, 27), reTime = /^([01]\d|2[0-3]):[0-5]\d$/;
     let evs = []; if (mcp && routine().useCal) { try { evs = await fetchEvents(today, lastDay); } catch (e) { evs = []; } }
@@ -10823,27 +10830,32 @@ async function pcRun() {
     }
     P.draft = { blocks: all.map((b) => cur.get(b.id)).filter(Boolean).concat(added), changes, dropped, summary: String(raw.resumen || '').slice(0, 400) };
   } catch (e) { P.err = e && e.message && !e.code ? e.message : (ERR[e && e.code] || 'No se pudo generar los cambios. Inténtalo de nuevo.'); }
-  finally { P.busy = false; pcPaint(); }
+  finally { P.busy = false; plcPaint(); }
 }
-async function pcApply() {
-  const P = state.pc, d = P.draft, btn = $('#pcApply'); const chosen = d ? d.changes.filter((x) => x.ok) : []; if (!d || !chosen.length) return;
-  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+async function plcApply() {
+  const P = state.plc, d = P.draft; const chosen = d ? d.changes.filter((x) => x.ok) : []; if (!d || !chosen.length) return;
   const prev = ((state.plan && state.plan.blocks) || []).filter(Boolean);
-  try {
-    let list = prev.map((b) => ({ ...b }));
-    chosen.forEach((x) => { if (x.op === 'quitar') list = list.filter((b) => b.id !== x.before.id); else if (x.op === 'mover') list = list.map((b) => (b.id === x.before.id ? x.after : b)); else if (x.op === 'anadir') list.push(x.after); });
-    await stSaveAll(list);
-    const n = chosen.length; P.draft = null; P.text = ''; pcClose(); toast('Plan cambiado: ' + n + (n === 1 ? ' cambio aplicado.' : ' cambios aplicados.'), { label: 'Deshacer', fn: () => { stSaveAll(prev); } }); blkRefresh();
-  } catch (e) { toast('No se pudieron guardar los cambios.'); if (btn) { btn.disabled = false; btn.textContent = pcApplyTxt(d); } }
+  let list = prev.map((b) => ({ ...b }));
+  chosen.forEach((x) => { if (x.op === 'quitar') list = list.filter((b) => b.id !== x.before.id); else if (x.op === 'mover') list = list.map((b) => (b.id === x.before.id ? x.after : b)); else if (x.op === 'anadir') list.push(x.after); });
+  stSaveAll(list);
+  const n = chosen.length; P.draft = null; P.text = ''; plcClose(); toast('Plan cambiado: ' + n + (n === 1 ? ' cambio aplicado.' : ' cambios aplicados.'), { label: 'Deshacer', fn: () => { stSaveAll(prev); } }); blkRefresh();
 }
-function pcApplyTxt(d) { const n = d.changes.filter((x) => x.ok).length; return n ? 'Aplicar ' + n + (n === 1 ? ' cambio' : ' cambios') : 'Marca algún cambio'; }
-function pcChk(x, d) {
-  const cb = h('input', { type: 'checkbox', checked: x.ok ? true : false, 'aria-label': 'Aplicar este cambio', onchange: () => { x.ok = cb.checked; const bt = $('#pcApply'); if (bt) { bt.textContent = pcApplyTxt(d); bt.disabled = !d.changes.some((c) => c.ok); } } });
+function plcApplyTxt(d) { const n = d.changes.filter((x) => x.ok).length; return n ? 'Aplicar ' + n + (n === 1 ? ' cambio' : ' cambios') : 'Marca algún cambio'; }
+function plcChk(x, d) {
+  const cb = h('input', { type: 'checkbox', checked: x.ok ? true : false, 'aria-label': 'Aplicar este cambio', onchange: () => { x.ok = cb.checked; const bt = $('#plcApply'); if (bt) { bt.textContent = plcApplyTxt(d); bt.disabled = !d.changes.some((c) => c.ok); } } });
   return cb;
 }
 
 /* ---------- Gestión manual rápida de los bloques del plan ---------- */
-async function stSaveAll(blocks) { await put('plan/current', { ...(state.plan || {}), blocks, updatedAt: Date.now() }); planRefreshAll(); }
+function stSaveAll(blocks) {
+  /* Guardado optimista: el plan cambia en pantalla al instante y la escritura en la base de datos sigue por detrás (si falla, put avisa) */
+  const data = { ...(state.plan || {}), blocks, updatedAt: Date.now() };
+  const wr = put('plan/current', data);
+  try { applyLocal('plan/current', data); } catch (e) {}
+  try { planRefreshAll(); } catch (e) {}
+  wr.catch(() => {});
+  return Promise.resolve();
+}
 async function blkMoveTomorrow(b0) {
   const all = ((state.plan && state.plan.blocks) || []).filter(Boolean), b = all.find((x) => x.id === b0.id); if (!b) return;
   const today = todayISO(), day = addDaysISO(b.day < today ? today : b.day, 1); let warn = '';
@@ -10864,10 +10876,10 @@ function blkTools(b) {
     h('button', { class: 'btn sm danger', type: 'button', onclick: () => blkRemove(b), text: 'Quitar' }));
 }
 function blkAiBar() {
-  const qIn = h('input', { type: 'text', class: 'pc-in', maxlength: 400, placeholder: 'Dile a la IA qué cambiar: «pasa el viernes al sábado», «quita los repasos»…', 'aria-label': 'Pedir un cambio a la IA' });
+  const qIn = h('input', { type: 'text', class: 'plc-in', maxlength: 400, placeholder: 'Dile a la IA qué cambiar: «pasa el viernes al sábado», «quita los repasos»…', 'aria-label': 'Pedir un cambio a la IA' });
   const go = () => { const t = qIn.value.trim(); if (t) openPlanChange(t, true); };
   qIn.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
-  return h('div', { class: 'pc-bar' }, qIn, h('button', { class: 'btn primary', type: 'button', disabled: !sample, onclick: go, text: 'Cambiar con IA' }));
+  return h('div', { class: 'plc-bar' }, qIn, h('button', { class: 'btn primary', type: 'button', disabled: !sample, onclick: go, text: 'Cambiar con IA' }));
 }
 
 function esNewForm() { const first = state.subjects[state.sel] ? state.sel : (sortedSubjects()[0] || [''])[0]; return { subjectId: first, title: 'Examen', date: addDaysISO(todayISO(), 14), time: '', weight: 2 }; }
@@ -22633,7 +22645,8 @@ tkClash = function (day, start, end, skipId) {
 .cal-wide .wk-day .row .sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* Ventanas emergentes: en pantallas anchas flotan con las 4 esquinas redondeadas (la regla móvil dejaba las inferiores cuadradas) */
 @media (min-width:600px){.modal{border-radius:28px!important;box-shadow:0 30px 70px -24px rgba(10,25,60,.45),0 0 0 1px color-mix(in srgb,var(--fg) 6%,transparent)}}
-.pc-bar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}.pc-bar .pc-in{flex:1 1 260px;min-width:0;min-height:44px;box-sizing:border-box}.blk-tools{opacity:.95}.blk-tools .btn.danger{margin-left:auto}#planChg .st-ins{list-style:none;padding-left:0}#planChg .st-ins li{margin:6px 0}#planChg .st-ins li input{margin:0 8px 0 0;vertical-align:middle;width:18px;height:18px}
+.plc-bar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}.plc-bar .plc-in{flex:1 1 260px;min-width:0;min-height:44px;box-sizing:border-box}.blk-tools{opacity:.95}.blk-tools .btn.danger{margin-left:auto}#planChg .st-ins{list-style:none;padding-left:0}#planChg .st-ins li{margin:6px 0}#planChg .st-ins li input{margin:0 8px 0 0;vertical-align:middle;width:18px;height:18px}
+#planChg .modal{max-height:92vh}#planChg #plcBody{display:flex;flex-direction:column;gap:12px;min-height:0}.plc-sum{margin:0}.plc-hd{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.plc-hd b{font-size:14px}.plc-all{display:flex;gap:6px}.plc-list{overflow:auto;max-height:46vh;border:1px solid var(--line);border-radius:16px;background:var(--bg);-webkit-overflow-scrolling:touch}.plc-row{display:flex;gap:10px;align-items:flex-start;padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}.plc-row:last-child{border-bottom:0}.plc-row input{margin:2px 0 0;width:18px;height:18px;flex:none}.plc-chip{flex:none;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-top:1px;min-width:52px;text-align:center}.plc-chip.plc-mv{background:var(--accent-soft);color:var(--accent)}.plc-chip.plc-rm{background:color-mix(in srgb,#e5484d 14%,transparent);color:#c93a3f}.plc-chip.plc-ad{background:var(--green-bg);color:var(--green)}.plc-tx{display:flex;flex-direction:column;gap:2px;min-width:0}.plc-t{font-size:14.5px;line-height:1.3}.plc-w{font-size:12.5px;color:var(--muted)}.plc-w.now{color:var(--fg);font-weight:600}.plc-foot{display:flex;gap:8px;flex-wrap:wrap}
 /* Cabecera del calendario: los controles no se pisan */
 #view-calendario .cal2 .cal-hd{min-width:0;flex-wrap:nowrap}
 #view-calendario .cal2 .cal-hd .cal-rb{flex:none}
