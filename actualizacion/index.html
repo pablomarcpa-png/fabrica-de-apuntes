@@ -5896,7 +5896,7 @@ function studyPanel(s) {
     h('span', { class: 'meta', id: 'studyState', text: 'Se guarda automáticamente' }));
 }
 state.notesDirty = null; state.fileDel = null;
-const NOTES_MAX = 4000000, LIB_MAX = 80000; /* apuntes de una asignatura: hasta ~4 MB (se guardan en trozos); entradas de biblioteca: 80.000 caracteres */
+const NOTES_MAX = 4000000, LIB_MAX = 80000, LIB_FMAX = 420000; /* apuntes de una asignatura: hasta ~4 MB (se guardan en trozos); entradas de biblioteca: 80.000 caracteres */
 const _scripts = {};
 function loadScript(url) { return _scripts[url] || (_scripts[url] = new Promise((res, rej) => { const el = document.createElement('script'); el.src = url; el.onload = res; el.onerror = () => { delete _scripts[url]; rej(new Error('load')); }; document.head.appendChild(el); })); }
 function noteFiles(txt) {
@@ -5997,7 +5997,7 @@ async function pdfTextRaw(buf, onProg) {
   const lib = await pdfJsLoad();
   if (lib) {
     try {
-      const task = lib.getDocument({ data: new Uint8Array(buf.slice(0)) }), pdf = await _tmo(task.promise, 45000), max = Math.min(pdf.numPages, 250), pages = [];
+      const task = lib.getDocument({ data: new Uint8Array(buf.slice(0)) }), pdf = await _tmo(task.promise, 45000), max = Math.min(pdf.numPages, 400), pages = [];
       for (let i = 1; i <= max; i++) {
         if (onProg) onProg(i, max);
         const tc = await _tmo((await pdf.getPage(i)).getTextContent(), 30000); let line = '', y = null, out = '';
@@ -6489,7 +6489,7 @@ async function genChunked(kind, head, notes, signal, onProg) {
 }
 
 /* ---------- Lectura visual de PDF: la IA ve las páginas (esquemas, gráficos, imágenes, tablas), no solo el texto ---------- */
-const VS_MAXPAGES = 120;
+const VS_MAXPAGES = 300;
 async function vsCaps() { if (!state.nc.imgCaps && !state.nc.capsTried) { state.nc.capsTried = true; try { await ncCaps(); } catch (e) {} } return sample && state.nc.imgCaps ? state.nc.imgCaps : null; }
 function vsIsPdfPick(id) { const l = state.lib && state.lib[id]; return !!l && typeof trIsPdf === 'function' && trIsPdf({ id, ...l }); }
 /* Recorre el PDF por tandas de páginas y entrega imágenes ya reducidas */
@@ -13654,10 +13654,33 @@ async function lfSnap(fl) {
   try { return new File([buf], fl.name, { type, lastModified: fl.lastModified || Date.now() }); }
   catch (e) { const b = new Blob([buf], { type }); try { Object.defineProperty(b, 'name', { value: fl.name }); } catch (e2) {} return b; }
 }
+/* PDF grandes (100-200+ páginas): si superan el límite de almacenamiento se trocean en partes con su capa de texto intacta */
+const LF_PART = 17 * 1024 * 1024;
+async function lfPdfLib() {
+  if (window.PDFLib) return window.PDFLib;
+  for (const u of ['https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js', 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js', 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js']) { try { await _tmo(loadScript(u), 25000); if (window.PDFLib) return window.PDFLib; } catch (e) {} }
+  return null;
+}
+async function lfSplitPdf(fl, onProg) {
+  const L = await lfPdfLib(); if (!L) throw new Error('no se pudo cargar el divisor de PDF (revisa la conexión)');
+  const src = await L.PDFDocument.load(await fl.arrayBuffer(), { ignoreEncryption: true, updateMetadata: false }), n = src.getPageCount();
+  const base = fl.name.replace(/\.pdf$/i, ''), out = [];
+  const cut = async (a, b) => {
+    const d = await L.PDFDocument.create(), idx = []; for (let i = a; i < b; i++) idx.push(i);
+    (await d.copyPages(src, idx)).forEach((p) => d.addPage(p));
+    const bytes = await d.save({ useObjectStreams: true });
+    if (bytes.length > LF_PART && b - a > 1) { const m = Math.floor((a + b) / 2); await cut(a, m); await cut(m, b); return; }
+    if (bytes.length > 19.5 * 1024 * 1024) throw new Error('la página ' + (a + 1) + ' pesa demasiado (' + lfSize(bytes.length) + ')');
+    out.push({ bytes, a, b }); if (onProg) onProg(b, n);
+  };
+  const per = Math.max(1, Math.floor(n / Math.max(2, Math.ceil(fl.size / LF_PART * 1.15))));
+  for (let a = 0; a < n; a += per) await cut(a, Math.min(n, a + per));
+  return out.map((o, i) => new File([o.bytes], base + ' (parte ' + (i + 1) + ' de ' + out.length + ' · págs ' + (o.a + 1) + '-' + o.b + ').pdf', { type: 'application/pdf', lastModified: fl.lastModified || Date.now() }));
+}
 async function lfStore(fl, id) {
   const mime = lfMime(fl);
   if (assets && LF_ASSET_OK.test(mime) && fl.size <= LF_ASSET_MAX) { try { const r = await assets.upload(new Blob([fl], { type: mime })); return { fstore: 'asset', fileId: r.id, url: r.url, mime }; } catch (e) { if (fl.size > LF_DB_MAX) throw e; } }
-  if (fl.size > LF_DB_MAX) throw new Error(assets ? 'este tipo de archivo pesa más de 3 MB (los PDF, imágenes y vídeos admiten hasta 20 MB)' : 'pesa más de 3 MB');
+  if (fl.size > LF_DB_MAX) throw new Error(assets ? 'este tipo de archivo pesa más de 3 MB (los PDF, imágenes y vídeos admiten hasta 20 MB; los PDF más grandes se dividen solos en partes)' : 'pesa más de 3 MB');
   if (!db) throw new Error('no hay almacenamiento disponible');
   const b64 = await lfToB64(fl), n = Math.max(1, Math.ceil(b64.length / LF_CH));
   for (let i = 0; i < n; i++) await db.doc('library/' + id + '/fparts/' + i).set({ i, b: b64.slice(i * LF_CH, (i + 1) * LF_CH) });
@@ -13720,7 +13743,15 @@ function openLibAdd(sid, kind0) {
     for (const fl of arr) {
       if (picked.some((x) => x.name === fl.name && x.size === fl.size)) continue;
       if (picked.length >= 60) { toast('Máximo 60 archivos de una vez.'); break; }
-      try { picked.push(await lfSnap(fl)); } catch (e) { bad2.push(fl.name); }
+      try {
+        const sn = await lfSnap(fl);
+        if (sn.size > LF_ASSET_MAX - 512 * 1024 && /pdf/i.test(lfMime(sn))) {
+          prog.hidden = false; prog.textContent = 'Dividiendo «' + fl.name + '» (' + lfSize(sn.size) + ') en partes…';
+          try { const ps = await lfSplitPdf(sn, (i, n) => { prog.textContent = 'Dividiendo «' + fl.name + '» · página ' + i + ' de ' + n; }); ps.forEach((p) => picked.push(p)); toast('«' + fl.name + '» pesa ' + lfSize(sn.size) + ': lo he dividido en ' + ps.length + ' partes para poder guardarlo.'); }
+          catch (e2) { bad2.push(fl.name + ' (' + ((e2 && e2.message) || 'no se pudo dividir') + ')'); }
+          prog.hidden = true;
+        } else picked.push(sn);
+      } catch (e) { bad2.push(fl.name); }
     }
     paintPicked();
     if (bad2.length) bad('No se pudo leer ' + bad2.map((n) => '«' + n + '»').join(', ') + '. Suele pasar con archivos que están solo en iCloud, Drive u otra nube y no se han descargado al dispositivo. Descárgalos (en Archivos, «Descargar ahora») y vuelve a elegirlos.'); else err.hidden = true;
@@ -13742,7 +13773,7 @@ function openLibAdd(sid, kind0) {
       else if (assets) {
         if (!picked.length) return bad('Elige al menos un archivo.'); prog.hidden = false; const fails = [], saved = []; let done = 0, next = 0;
         const worker = async () => { while (next < picked.length) { const k = next++, fl = picked[k];
-          try { const id = uid(), st = await lfStore(fl, id); let text = ''; if (opt.text) { window.__noOcr = true; try { text = (await fileText(fl)).replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, LIB_MAX); } catch (e) { text = ''; } finally { window.__noOcr = false; } }
+          try { const id = uid(), st = await lfStore(fl, id); let text = ''; if (opt.text) { window.__noOcr = true; try { text = (await fileText(fl)).replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, LIB_FMAX); } catch (e) { text = ''; } finally { window.__noOcr = false; } }
             await put('library/' + id, { subjectId: subject, kind: 'archivo', title: (fl.name.replace(/\.[^.]+$/, '').slice(0, 80) || fl.name.slice(0, 80)), text, fileName: fl.name, size: fl.size, ...st, createdAt: now + k, updatedAt: now + k }); saved.push(fl); }
           catch (e) { fails.push('«' + fl.name + '»: ' + ((e && (e.message || e.code)) || 'error')); }
           done++; prog.textContent = 'Guardando ' + done + ' de ' + picked.length + '…'; } };
@@ -14760,14 +14791,14 @@ async function libReadFile(it, o) {
   } catch (e) {}
   return null;
 }
-async function libCacheText(it, r) { if (it.tmp) return; try { const cur = state.lib[it.id] || it; await put('library/' + it.id, { ...cur, id: undefined, text: r.text.slice(0, LIB_MAX), textFrom: r.ocr ? 'ocr' : 'file' }); } catch (e) {} }
+async function libCacheText(it, r) { if (it.tmp) return; try { const cur = state.lib[it.id] || it; await put('library/' + it.id, { ...cur, id: undefined, text: r.text.slice(0, LIB_FMAX), textFrom: r.ocr ? 'ocr' : 'file' }); } catch (e) {} }
 async function libEnsureText(items, say) {
   for (const it of items) { if (it.kind !== 'archivo' || String(it.text || '').trim()) continue; if (say) say('Leyendo «' + (it.title || it.fileName || 'archivo') + '»…'); const r = await libReadFile(it); if (r) await libCacheText(it, r); }
 }
 
 /* ---------- Transcripción de los PDF con IA: la IA ve las páginas y deja el texto (con tablas) en la biblioteca para todas las IAs ---------- */
 state.tr = state.tr || { busy: false, run: null, ctl: null, off: false, pause: 0, tl: {} };
-const TR_MAX = 240000, TR_BATCH = 3;
+const TR_MAX = 420000, TR_BATCH = 4;
 const trIsPdf = (l) => !!l && l.kind === 'archivo' && !l.tmp && !l.audio && lfIsPdf(l);
 function trLabel(l) {
   const r = state.tr.run; if (r && r.id === l.id) return 'Transcribiendo con IA… ' + r.done + (r.total ? ' de ' + r.total + ' págs.' : '');
@@ -17872,8 +17903,8 @@ function migPanel() {
 }
 const renderSettings0 = renderSettings;
 /* ---------- Copia de seguridad ---------- */
-const BK_COLS = ['subjects', 'tasks', 'exams', 'library', 'sessions', 'genjobs', 'gendocs', 'research', 'review', 'memory', 'automations', 'agents', 'skills', 'skillfiles', 'nucleo', 'plan', 'habits', 'meta', 'proactive', 'board', 'aglog', 'boards', 'segs', 'ankidecks'];
-state.bk = { busy: false, pending: null, msg: '', big: true, text: '', paste: false, n: 0 };
+const BK_COLS = ['subjects', 'tasks', 'exams', 'library', 'sessions', 'genjobs', 'gendocs', 'research', 'review', 'memory', 'automations', 'agents', 'skills', 'skillfiles', 'nucleo', 'plan', 'habits', 'meta', 'proactive', 'board', 'aglog', 'boards', 'segs', 'ankidecks', 'mindmaps', 'recordatorios', 'examenes', 'decks'];
+state.bk = { busy: false, pending: null, msg: '', big: true, text: '', paste: false, n: 0, plan: null, undo: null };
 async function bkCollect() {
     const docs = {};
     const grab = async (path) => { const qs = await db.collection(path).get(); const out = []; qs.docs.forEach((d) => { const key = path + '/' + d.id; if (key !== 'meta/mejoras') docs[key] = d.data(); out.push(d.id); }); return out; };
@@ -17929,7 +17960,7 @@ async function bkPick(file) {
     if (!j || j.app !== 'fabrica-de-apuntes' || !j.docs || typeof j.docs !== 'object') throw new Error('x');
     const keys = Object.keys(j.docs).filter((k) => /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_.:@+~-]+)+$/.test(k) && j.docs[k] && typeof j.docs[k] === 'object' && k !== 'meta/mejoras');
     if (!keys.length) throw new Error('x');
-    state.bk.pending = { docs: j.docs, keys, at: j.at }; state.bk.msg = ''; state.bk.paste = false;
+    state.bk.pending = { docs: j.docs, keys, at: j.at }; state.bk.plan = null; state.bk.msg = ''; state.bk.paste = false;
   } catch (e) { state.bk.pending = null; state.bk.msg = 'Ese archivo no es una copia válida de Fábrica de Apuntes.'; }
   renderSettings();
 }
@@ -17942,13 +17973,157 @@ async function bkRestore() {
   state.bk.msg = 'Restaurados ' + ok + ' documentos' + (bad ? ' (' + bad + ' con error)' : '') + '. Se está cargando todo; si algo no aparece, recarga la página.';
   renderSettings();
 }
+/* ---------- Fusionar una copia SIN duplicar (Mac ↔ iPhone) ---------- */
+const bkmNorm = (s) => String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+const bkmStable = (o) => JSON.stringify(o, (k, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.keys(v).sort().reduce((a, x) => { a[x] = v[x]; return a; }, {}) : v));
+const bkmHash = (s) => { let h1 = 5381, h2 = 52711; s = String(s); for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); h1 = ((h1 << 5) + h1 + c) | 0; h2 = ((h2 << 5) + h2 ^ c) | 0; } return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36) + s.length.toString(36); };
+const bkmTs = (d) => (d && (d.updatedAt || d.at || d.createdAt || 0)) || 0;
+const BKM_LK = {
+  tasks: (d) => ['t', bkmNorm(d.title), d.subjectId || '', d.due || '', d.kind || ''].join('|'),
+  exams: (d) => ['e', d.subjectId || '', bkmNorm(d.title), d.date || ''].join('|'),
+  library: (d) => ['l', d.subjectId || '', d.kind || '', bkmNorm(d.title || d.fileName), String(d.text || '').length, d.fileName || '', d.url || ''].join('|'),
+  sessions: (d) => ['s', d.start || '', d.minutes || '', d.subjectId || ''].join('|'),
+  gendocs: (d) => ['g', d.subjectId || '', bkmNorm(d.title), String(d.markdown || '').length].join('|'),
+  mindmaps: (d) => ['m', d.subjectId || '', bkmNorm(d.title)].join('|'),
+  ankidecks: (d) => ['a', d.subjectId || '', bkmNorm(d.name || d.title)].join('|'),
+  examenes: (d) => ['x', d.sid || d.subjectId || '', bkmNorm(d.title), d.at || ''].join('|')
+};
+function bkmPlan(rem, loc) {
+  const out = { set: {}, put: {}, prev: {}, stats: { nuevos: 0, repetidos: 0, fusionadas: 0, conservados: 0, actualizados: 0 }, subjetos: [], avisos: [] };
+  const col = (k) => k.split('/')[0], depth = (k) => k.split('/').length;
+  const PRI = { subjects: 0, library: 1, exams: 2, tasks: 3, plan: 9 }, pri = (k) => (PRI[col(k)] === undefined ? 5 : PRI[col(k)]);
+  const keys = Object.keys(rem).filter((k) => rem[k] && typeof rem[k] === 'object' && k !== 'meta/mejoras').sort((a, b) => depth(a) - depth(b) || pri(a) - pri(b) || a.localeCompare(b));
+  const locSub = {}; Object.keys(loc).forEach((k) => { const m = /^subjects\/([^/]+)$/.exec(k); if (m && loc[k]) locSub[bkmNorm(loc[k].name)] = m[1]; });
+  const map = {}, newSub = new Set();
+  keys.forEach((k) => { const m = /^subjects\/([^/]+)$/.exec(k); if (!m) return; const rid = m[1], nm = bkmNorm(rem[k].name);
+    if (nm && locSub[nm]) map[rid] = locSub[nm]; else { let id = rid; if (loc['subjects/' + rid]) id = rid + 'i' + bkmHash(nm).slice(0, 4); map[rid] = id; newSub.add(id); } });
+  const sid2 = (id) => map[id] || id, remapKey = (k) => k.replace(/^subjects\/([^/]+)/, (m, id) => 'subjects/' + sid2(id));
+  const fixSubj = (d) => (d && d.subjectId && map[d.subjectId] ? { ...d, subjectId: map[d.subjectId] } : d);
+  const idmap = { exams: {}, tasks: {}, library: {} };
+  const idxLK = {}; // índice de claves lógicas LOCALES por colección
+  const addIdx = (c, d, id) => { if (!BKM_LK[c]) return; (idxLK[c] = idxLK[c] || new Map()).set(BKM_LK[c](d), id); };
+  Object.keys(loc).forEach((k) => { const p = k.split('/'); if (p.length === 2 && BKM_LK[p[0]] && loc[k]) addIdx(p[0], loc[k], p[1]); });
+  const idxHash = {}; Object.keys(loc).forEach((k) => { const p = k.split('/'); if (p.length === 2 && loc[k]) (idxHash[p[0]] = idxHash[p[0]] || new Set()).add(bkmHash(bkmStable(loc[k]))); });
+  const added = new Set(), skipped = new Set();
+  const add = (k, d, viaPut) => { out.set[k] = d; if (viaPut) out.put[k] = true; out.prev[k] = loc[k] === undefined ? null : loc[k]; };
+  const rep = (c) => { out.stats.repetidos++; };
+  const refix = (d, c) => { if (!d || typeof d !== 'object') return d; let x = fixSubj(d); if (c === 'tasks' && x.examId && idmap.exams[x.examId]) x = { ...x, examId: idmap.exams[x.examId] }; if (c === 'exams' && Array.isArray(x.topics)) x = { ...x, topics: x.topics.map((t) => (t && t.libId && idmap.library[t.libId] ? { ...t, libId: idmap.library[t.libId] } : t)) }; return x; };
+  // texto completo de apuntes remotos (con partes)
+  const remNotes = (rid) => { const d = rem['subjects/' + rid] || {}; let t = String(d.notes || ''); const n = d.notesN || 1; for (let i = 1; i < n; i++) { const p = rem['subjects/' + rid + '/nparts/' + i]; t += p ? String(p.t || '') : ''; } return t; };
+  const locNotes = (lid) => { const d = loc['subjects/' + lid] || {}; let t = String(d.notes || ''); const n = d.notesN || 1; for (let i = 1; i < n; i++) { const p = loc['subjects/' + lid + '/nparts/' + i]; t += p ? String(p.t || '') : ''; } return t; };
+  for (const k of keys) {
+    const c = col(k), p = k.split('/'), d0 = rem[k];
+    // ---- asignaturas ----
+    if (c === 'subjects' && p.length === 2) {
+      const rid = p[1], tid = sid2(rid);
+      if (newSub.has(tid)) { add('subjects/' + tid, d0, false); added.add('subjects/' + tid); out.stats.nuevos++; out.subjetos.push(d0.name + ' (nueva)'); continue; }
+      const L = loc['subjects/' + tid] || {}, merged = { ...L }; let changed = false;
+      Object.keys(d0).forEach((f) => { if (['notes', 'notesN', 'notesAt'].includes(f)) return; if (merged[f] === undefined || merged[f] === '' || merged[f] === null) { merged[f] = d0[f]; changed = true; } });
+      const rn = remNotes(rid), ln = locNotes(tid);
+      if (rn && !ln) { merged.notes = rn; if (d0.notesAt) merged.notesAt = d0.notesAt; changed = true; }
+      else if (rn && ln && rn !== ln && !ln.includes(rn)) {
+        if (rn.includes(ln)) { merged.notes = rn; if (d0.notesAt) merged.notesAt = d0.notesAt; changed = true; }
+        else { const lid = 'imp' + bkmHash(rn), key = 'library/' + lid; if (!loc[key] && !out.set[key]) { add(key, { subjectId: tid, kind: 'apuntes', title: 'Apuntes importados · ' + (d0.name || 'asignatura'), text: rn, createdAt: Date.now(), updatedAt: Date.now() }, false); out.avisos.push('Los apuntes de «' + d0.name + '» eran distintos en las dos versiones: conservé los de aquí y guardé los otros en la biblioteca.'); } }
+      }
+      if (changed) { add('subjects/' + tid, merged, true); out.stats.actualizados++; }
+      out.stats.fusionadas++; out.subjetos.push((L.name || d0.name) + ' (ya la tenías: fusionada)');
+      continue;
+    }
+    if (c === 'subjects' && p[2] === 'nparts') { if (newSub.has(sid2(p[1]))) add(remapKey(k), d0, false); continue; }
+    const tkey = remapKey(k);
+    // ---- cosas colgadas de una asignatura (resumen, esquema, flashcards…) ----
+    if (c === 'subjects' && p[2] === 'items') {
+      const L = loc[tkey]; if (!L) { add(tkey, d0, false); out.stats.nuevos++; } else if (bkmTs(d0) > bkmTs(L)) { add(tkey, d0, false); out.stats.actualizados++; } else if (bkmStable(L) === bkmStable(d0)) rep(c); else out.stats.conservados++;
+      continue;
+    }
+    // ---- plan de estudio ----
+    if (k === 'plan/current') {
+      const L = loc[k]; if (!L || !Array.isArray(L.blocks)) { add(k, d0, false); out.stats.nuevos++; continue; }
+      const sig = (b) => [b.day, b.start || '', b.end || '', bkmNorm(b.subject), bkmNorm(b.title)].join('|'), blocks = L.blocks.map((b) => ({ ...b })), byId = new Map(blocks.map((b) => [b.id, b])), bySig = new Map(blocks.map((b) => [sig(b), b]));
+      let n = 0, dn = 0;
+      (Array.isArray(d0.blocks) ? d0.blocks : []).forEach((r) => { if (!r || !r.id) return; let b = byId.get(r.id) || bySig.get(sig(r));
+        if (b) { if (r.done && !b.done) { b.done = true; dn++; } return; }
+        const nb = { ...r }; if (nb.examId && idmap.exams[nb.examId]) nb.examId = idmap.exams[nb.examId]; if (nb.taskId && idmap.tasks[nb.taskId]) nb.taskId = idmap.tasks[nb.taskId]; if (nb.libId && idmap.library[nb.libId]) nb.libId = idmap.library[nb.libId]; blocks.push(nb); byId.set(nb.id, nb); bySig.set(sig(nb), nb); n++; });
+      if (n || dn) { add(k, { ...L, blocks, updatedAt: Date.now() }, false); out.stats.nuevos += n; if (dn) out.stats.actualizados += dn; } else rep(c);
+      continue;
+    }
+    // ---- mazos Anki: unir tarjetas ----
+    if (c === 'ankidecks' && p.length === 2) {
+      const d = refix(d0, c), lk = BKM_LK.ankidecks(d), lid = (idxLK.ankidecks || new Map()).get(lk);
+      if (lid) { const L = loc['ankidecks/' + lid], cards = (Array.isArray(L.cards) ? L.cards : []).slice(), seen = new Set(cards.map((x) => bkmNorm(x.f) + '|' + bkmNorm(x.r || x.b))); let n = 0;
+        (Array.isArray(d.cards) ? d.cards : []).forEach((x) => { const s = bkmNorm(x.f) + '|' + bkmNorm(x.r || x.b); if (!seen.has(s)) { seen.add(s); cards.push(x); n++; } });
+        if (n) { add('ankidecks/' + lid, { ...L, cards }, false); out.stats.nuevos += n; } else rep(c); continue; }
+      if (!loc[k]) { add(k, d, false); addIdx('ankidecks', d, p[1]); out.stats.nuevos++; } else rep(c);
+      continue;
+    }
+    // ---- documentos de primer nivel con clave lógica o por contenido ----
+    if (p.length === 2) {
+      const d = refix(d0, c), id = p[1];
+      if (loc[k]) { // mismo identificador
+        if (bkmStable(loc[k]) === bkmStable(d)) { rep(c); continue; }
+        if (c === 'tasks') { if (d.done && !loc[k].done) { add(k, { ...loc[k], done: true }, false); out.stats.actualizados++; } else out.stats.conservados++; continue; }
+        if (c === 'meta') { out.stats.conservados++; continue; }
+        if (bkmTs(d) > bkmTs(loc[k])) { add(k, d, false); out.stats.actualizados++; } else out.stats.conservados++;
+        continue;
+      }
+      if (c === 'meta') { add(k, d, false); out.stats.nuevos++; continue; }
+      if (BKM_LK[c]) {
+        const lk = BKM_LK[c](d), lid = (idxLK[c] || new Map()).get(lk);
+        if (lid) { if (idmap[c]) idmap[c][id] = lid; if (c === 'tasks' && d.done && loc['tasks/' + lid] && !loc['tasks/' + lid].done) { add('tasks/' + lid, { ...loc['tasks/' + lid], done: true }, false); out.stats.actualizados++; } else rep(c); skipped.add(k); continue; }
+        add(k, d, false); addIdx(c, d, id); added.add(k); out.stats.nuevos++; continue;
+      }
+      const hs = bkmHash(bkmStable(d)); idxHash[c] = idxHash[c] || new Set();
+      if (idxHash[c].has(hs)) { rep(c); skipped.add(k); continue; }
+      add(k, d, false); idxHash[c].add(hs); added.add(k); out.stats.nuevos++;
+      continue;
+    }
+    // ---- documentos anidados (partes de archivos grandes, historiales…) ----
+    const parent = p.slice(0, 2).join('/');
+    if (skipped.has(k.split('/').slice(0, 2).join('/'))) continue;
+    if (c === 'library' && p[2] === 'fparts' && !added.has(parent)) continue;
+    if (loc[tkey]) { rep(c); continue; }
+    add(tkey, fixSubj(d0), false); out.stats.nuevos++;
+  }
+  return out;
+}
+function bkmSummary(pl) {
+  const s = pl.stats, L = [];
+  L.push((s.nuevos ? s.nuevos + ' elementos nuevos se añadirán' : 'No hay nada nuevo que añadir') + '.');
+  if (s.repetidos) L.push(s.repetidos + ' ya los tenías aquí y no se duplicarán.');
+  if (s.fusionadas) L.push(s.fusionadas + (s.fusionadas === 1 ? ' asignatura ya existía (mismo nombre): se fusionará, sin crear otra.' : ' asignaturas ya existían (mismo nombre): se fusionarán, sin crear otras.'));
+  if (s.actualizados) L.push(s.actualizados + ' se actualizarán porque la copia trae una versión más reciente.');
+  if (s.conservados) L.push(s.conservados + ' se conservarán como los tienes aquí (los de aquí son más recientes o iguales).');
+  return L.concat(pl.avisos);
+}
+async function bkMergePrepare() {
+  const B = state.bk, P = B.pending; if (!P || !db || B.busy) return;
+  B.busy = true; B.msg = 'Comparando con lo que ya tienes…'; renderSettings();
+  try { const r = await bkCollect(); B.plan = bkmPlan(P.docs, r.docs); B.msg = ''; }
+  catch (e) { B.plan = null; B.msg = 'No se pudo comparar la copia con tus datos. Inténtalo de nuevo.'; }
+  B.busy = false; renderSettings();
+}
+async function bkMergeApply() {
+  const B = state.bk, pl = B.plan; if (!pl || !db || B.busy) return;
+  B.busy = true; B.msg = 'Fusionando…'; renderSettings();
+  let ok = 0, bad = 0; const keys = Object.keys(pl.set);
+  for (const k of keys) { try { if (pl.put[k]) await put(k, pl.set[k]); else await db.doc(k).set(pl.set[k]); ok++; } catch (e) { bad++; } }
+  B.undo = { prev: pl.prev, keys }; B.pending = null; B.plan = null; B.busy = false;
+  B.msg = 'Fusión hecha: ' + ok + ' documentos escritos' + (bad ? ' (' + bad + ' con error)' : '') + '. Nada se ha duplicado. Si algo no aparece, recarga la página.';
+  renderSettings();
+}
+async function bkMergeUndo() {
+  const B = state.bk, U = B.undo; if (!U || !db || B.busy) return;
+  B.busy = true; B.msg = 'Deshaciendo la fusión…'; renderSettings(); let bad = 0;
+  for (const k of U.keys) { try { if (U.prev[k] === null) await db.doc(k).delete(); else await db.doc(k).set(U.prev[k]); } catch (e) { bad++; } }
+  B.undo = null; B.busy = false; B.msg = bad ? 'La fusión se deshizo salvo ' + bad + ' documentos.' : 'Fusión deshecha: todo volvió a como estaba.'; renderSettings();
+}
 function bkPanel() {
   const B = state.bk, file = h('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: (e) => { bkPick(e.target.files[0]); e.target.value = ''; } });
   const P = B.pending; let lastBk = 0; try { lastBk = +localStorage.getItem('fa_last_bk') || 0; } catch (e) {}
   const bkDays = lastBk ? Math.floor((Date.now() - lastBk) / 864e5) : null;
   return h('section', { class: 'auto-form bk' }, h('h3', { text: 'Copia de seguridad' }),
     h('p', { class: 'small', role: 'status', style: bkDays === null || bkDays >= 14 ? 'font-weight:700;color:var(--warn,#b45309)' : '', text: bkDays === null ? 'Aún no has descargado ninguna copia desde este dispositivo.' : bkDays === 0 ? 'Última copia descargada: hoy.' : 'Última copia descargada: hace ' + bkDays + (bkDays === 1 ? ' día.' : ' días.') + (bkDays >= 14 ? ' Conviene hacer una nueva.' : '') }),
-    h('p', { class: 'small', text: 'Descarga todos tus datos en un archivo y restáuralos cuando quieras. También puedes «Copiar copia» y «Pegar copia» en otra cuenta de Claude para pasar todo directamente. Restaurar no borra nada: solo reescribe lo que esté en la copia, y antes te pide confirmación.' }),
+    h('p', { class: 'small', text: 'Descarga todos tus datos en un archivo y restáuralos cuando quieras. También puedes «Copiar copia» y «Pegar copia» en otra cuenta de Claude para pasar todo directamente. Al traer una copia puedes «Fusionar sin duplicar»: añade solo lo que te falta, no repite lo que ya tienes (aunque tenga otro identificador) y se puede deshacer. «Restaurar sobrescribiendo» escribe todo encima y puede duplicar.' }),
     h('label', { class: 'small', style: 'display:flex;gap:10px;align-items:center;min-height:44px' }, h('input', { type: 'checkbox', checked: B.big !== false, 'aria-label': 'Incluir archivos de la biblioteca', onchange: (e) => { B.big = e.target.checked; } }), h('span', { text: 'Incluir los archivos de la biblioteca guardados en la app (el archivo de copia pesará más).' })),
     h('div', { class: 'toolbar' },
       h('button', { class: 'btn primary', type: 'button', disabled: B.busy || !db, onclick: bkExport }, 'Descargar copia'),
@@ -17956,9 +18131,11 @@ function bkPanel() {
     h('div', { class: 'act-row' }, h('button', { class: 'btn primary', type: 'button', disabled: B.busy || !db, onclick: bkCopy }, emo('copy'), ' Copiar copia'), h('button', { class: 'btn', type: 'button', disabled: B.busy || !db, onclick: () => { B.paste = !B.paste; renderSettings(); } }, emo('download'), ' Pegar copia')),
     B.text ? h('textarea', { class: 'bk-ta', readonly: true, rows: 6, 'aria-label': 'Texto de la copia', onfocus: (e) => e.target.select() }, B.text) : null,
     B.paste ? h('div', { class: 'bk-paste' }, h('textarea', { id: 'bkPasteTa', class: 'bk-ta', rows: 6, placeholder: 'Pega aquí la copia que copiaste en la otra cuenta…', 'aria-label': 'Pegar la copia', onpaste: () => setTimeout(() => { const t = $('#bkPasteTa'); if (t && t.value.length > 20) bkPasteApply(t.value); }, 50) }), h('button', { class: 'btn primary', type: 'button', onclick: () => bkPasteApply(($('#bkPasteTa') || {}).value) }, 'Revisar copia')) : null,
-    P ? h('div', { class: 'run-banner warn', role: 'alert', style: 'flex-wrap:wrap' },
-      h('span', { text: 'La copia tiene ' + P.keys.length + ' documentos' + (P.at ? ' (' + fmtDateTime(P.at) + ')' : '') + '. Los que ya existan con el mismo nombre se sobrescribirán. ¿Restaurar?' }),
-      h('span', { class: 'cal-confirm' }, h('button', { class: 'btn danger', type: 'button', onclick: bkRestore }, 'Sí, restaurar'), h('button', { class: 'btn', type: 'button', onclick: () => { state.bk.pending = null; renderSettings(); } }, 'Cancelar'))) : null,
+    P && !B.plan ? h('div', { class: 'run-banner', role: 'alert', style: 'flex-wrap:wrap' },
+      h('span', { text: 'La copia tiene ' + P.keys.length + ' documentos' + (P.at ? ' (' + fmtDateTime(P.at) + ')' : '') + '. ¿Cómo quieres traerla?' }),
+      h('span', { class: 'cal-confirm' }, h('button', { class: 'btn primary', type: 'button', disabled: B.busy, onclick: bkMergePrepare }, 'Fusionar sin duplicar (recomendado)'), h('button', { class: 'btn danger', type: 'button', disabled: B.busy, onclick: bkRestore, title: 'Escribe todo lo de la copia encima: lo que tenga el mismo nombre se sobrescribe y lo demás puede quedar duplicado' }, 'Restaurar sobrescribiendo'), h('button', { class: 'btn', type: 'button', onclick: () => { state.bk.pending = null; renderSettings(); } }, 'Cancelar'))) : null,
+    B.plan ? h('div', { class: 'run-banner', role: 'alert', style: 'flex-direction:column;align-items:flex-start;gap:6px' }, h('b', { text: 'Esto es lo que pasará (todavía no se ha tocado nada):' }), h('ul', { class: 'small', style: 'margin:4px 0 4px 18px' }, bkmSummary(B.plan).map((t) => h('li', { text: t }))), B.plan.subjetos.length ? h('p', { class: 'small', text: 'Asignaturas: ' + B.plan.subjetos.join(' · ') }) : null, h('span', { class: 'cal-confirm' }, Object.keys(B.plan.set).length ? h('button', { class: 'btn primary', type: 'button', disabled: B.busy, onclick: bkMergeApply }, 'Aplicar la fusión') : null, h('button', { class: 'btn', type: 'button', onclick: () => { state.bk.plan = null; state.bk.pending = null; renderSettings(); } }, Object.keys(B.plan.set).length ? 'Cancelar' : 'Cerrar'))) : null,
+    B.undo ? h('div', { class: 'act-row' }, h('button', { class: 'btn', type: 'button', disabled: B.busy, onclick: bkMergeUndo }, 'Deshacer la última fusión')) : null,
     B.msg ? h('p', { class: 'small', role: 'status', text: B.msg }) : null);
 }
 renderSettings = function () { renderSettings0(); const box = $('#settingsBody'); if (box) { box.append(aiPanel()); try { box.append(remCard(renderSettings)); } catch (e) {} box.append(bkPanel()); box.append(migPanel()); } };
