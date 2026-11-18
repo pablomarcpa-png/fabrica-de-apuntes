@@ -3894,6 +3894,11 @@ function fmtDay(iso) { const [y, m, d] = iso.split('-').map(Number); return new 
 function fmtDateTime(ms) { return new Date(ms).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
 function fmtT(iso) { return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }); }
 function toMin(hhmm) { const [a, b] = hhmm.split(':').map(Number); return a * 60 + b; }
+/* Bloques del plan SIN hora: solo día + duración (start/end vacíos, noTime:true, dur en minutos); el estudiante elige la hora ese día */
+const blkTimed = (b) => !!(b && b.start && b.end);
+const blkDur = (b) => blkTimed(b) ? Math.max(0, toMin(b.end) - toMin(b.start)) : (Number(b && b.dur) > 0 ? Number(b.dur) : 45);
+const blkMinTxt = (m) => m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '') : m + ' min';
+const blkWhen = (b) => blkTimed(b) ? b.start + '–' + b.end : 'Sin hora · ' + blkMinTxt(blkDur(b));
 function hueOf(name) { const e = Object.values(state.subjects).find((s) => s.name === name); return e && e.hue != null ? e.hue : 220; }
 
 /* ---------- Almacén (db) con copia local ---------- */
@@ -4144,7 +4149,7 @@ function gsChunks() {
   Object.keys(state.subjects || {}).concat('__jarvis').forEach((sid) => { const m = gsChatOf(sid); if (!m.length) return; const nm = sid === '__jarvis' ? 'Jarvis' : sn(sid); add('Chat · ' + nm, 'Chat', m.slice(-24).map((x) => (x.r === 'u' ? 'Yo: ' : 'IA: ') + x.t).join('\n\n'), () => ncOpen(sid)); });
   Object.entries(state.tasks || {}).forEach(([id, t]) => { if (!t || t.examId || !t.title) return; add('Trabajo · ' + sn(t.subjectId), 'Trabajo', t.title + ' — entrega ' + (t.due || 'sin fecha') + (t.done ? ' (entregado)' : ' (pendiente)') + (t.kind ? ', tipo ' + t.kind : '') + (t.prio ? ', prioridad ' + t.prio : '') + (t.weight != null && t.weight !== '' ? ', vale un ' + t.weight + ' %' : '') + (t.where ? ', se entrega en ' + t.where : '') + '. ' + (t.note || '') + (Array.isArray(t.steps) && t.steps.length ? ' Pasos: ' + t.steps.map((x) => (x.d ? '[hecho] ' : '') + x.t).join('; ') : ''), () => openTaskModal(id)); });
   try { examList().forEach((e) => add('Examen · ' + sn(e.subjectId), 'Examen', (e.title || 'Examen') + ' — ' + e.date + (e.time ? ' a las ' + e.time : '') + (e.note ? '. ' + e.note : ''), () => openExamModal(e.id))); } catch (e) {}
-  (((state.plan && state.plan.blocks) || [])).forEach((b) => { if (!b || !b.title) return; add('Plan de estudio · ' + (b.subject || ''), 'Bloque', b.title + ' — ' + b.day + ' de ' + b.start + ' a ' + b.end + (b.done ? ' (hecho)' : ' (pendiente)') + (b.note ? '. ' + b.note : ''), () => { const sid = Object.keys(state.subjects || {}).find((k) => state.subjects[k].name === b.subject); if (sid) { state.sp.id = sid; state.sp.view = ''; setView('asignatura'); } else setView('calendario'); }); });
+  (((state.plan && state.plan.blocks) || [])).forEach((b) => { if (!b || !b.title) return; add('Plan de estudio · ' + (b.subject || ''), 'Bloque', b.title + ' — ' + b.day + (blkTimed(b) ? ' de ' + b.start + ' a ' + b.end : ' (sin hora)') + (b.done ? ' (hecho)' : ' (pendiente)') + (b.note ? '. ' + b.note : ''), () => { const sid = Object.keys(state.subjects || {}).find((k) => state.subjects[k].name === b.subject); if (sid) { state.sp.id = sid; state.sp.view = ''; setView('asignatura'); } else setView('calendario'); }); });
   try { (window.rmAll ? window.rmAll() : []).forEach((r) => add('Recordatorio' + (r.area ? ' · ' + r.area : ''), 'Recordatorio', r.title + ' — ' + (r.date || 'sin fecha') + (r.done ? ' (hecho)' : ' (pendiente)') + (r.notes ? '. ' + r.notes : ''), () => window.rmGo(r.id))); } catch (e) {}
   return out;
 }
@@ -5024,7 +5029,8 @@ function dayItems(k0, withDone) {
   }
   for (const b of state.plan.blocks || []) {
     if (b.day !== today) continue;
-    items.push({ block: b, kindL: 'Estudio', sort: toMin(b.start), end: toMin(b.end), time: b.start + '–\u200b' + b.end, isBlock: true, subject: b.subject, title: 'Estudiar ' + b.subject, sub: b.title + (Array.isArray(b.mats) && b.mats.length ? ' · ' + b.mats.length + (b.mats.length === 1 ? ' material' : ' materiales') : ''), tint: 'green', icon: 'book', done: !!b.done, hero: () => openAgent('plan'), go: () => openSessModal(b.id) });
+    const nt = !blkTimed(b);
+    items.push({ block: b, kindL: 'Estudio', sort: nt ? -1 : toMin(b.start), end: nt ? null : toMin(b.end), time: nt ? 'Sin hora' : b.start + '–\u200b' + b.end, isBlock: true, subject: b.subject, title: 'Estudiar ' + b.subject, sub: (nt ? blkMinTxt(blkDur(b)) + ' · elige la hora · ' : '') + b.title + (Array.isArray(b.mats) && b.mats.length ? ' · ' + b.mats.length + (b.mats.length === 1 ? ' material' : ' materiales') : ''), tint: 'green', icon: 'book', done: !!b.done, hero: () => openAgent('plan'), go: () => openSessModal(b.id) });
   }
   for (const [tid, t] of Object.entries(state.tasks)) {
     if ((t.done && !withDone) || t.due !== today) continue;
@@ -5032,6 +5038,7 @@ function dayItems(k0, withDone) {
     items.push({ taskId: tid, task: t, kindL: t.examId ? 'Examen' : 'Entrega', examTask: !!t.examId, done: !!t.done, sort: -1, time: today === real ? 'Hoy' : 'Todo el día', title: t.title, sub: (t.kind && t.kind !== 'entrega' && typeof tkKindL === 'function' ? tkKindL(t.kind) : 'Entrega') + (s ? ' · ' + s.name : ''), tint: 'orange', icon: 'flag', go: () => setView('calendario') });
   }
   for (const e of Object.values(state.exams || {})) { if (!e || e.date !== today || !state.subjects[e.subjectId]) continue; items.push({ kindL: 'Examen', sort: e.time ? toMin(e.time) : -1, end: null, time: e.time || (today === real ? 'Hoy' : 'Todo el día'), title: 'Examen · ' + (e.title || 'Examen'), sub: state.subjects[e.subjectId].name, tint: 'orange', icon: 'flag', go: () => setView('calendario') }); }
+  items.forEach((it) => { if (it.block && !blkTimed(it.block)) { const bb = it.block; it.go = () => blkPickTime(bb); it.hero = it.go; } });
   const nm = new Date().getHours() * 60 + new Date().getMinutes();
   items.forEach((it) => { if (today !== real) { it.past = false; it.now = false; return; } it.past = it.end != null && it.end <= nm; it.now = it.end != null && it.sort <= nm && nm < it.end; });
   return items.sort((a, b) => (a.past - b.past) || (a.sort - b.sort));
@@ -5342,7 +5349,7 @@ function calItems(k, idx) {
   const out = (idx[k] || []).filter((x) => !(x.gid && hid.has(x.gid)) && !(x.allDay && tsy.includes(x.title)) && !(!x.allDay && syn.some((b) => gcSum(b) === x.title && toMin(b.start) === x.start)));
   for (const [tid, t] of Object.entries(state.tasks)) if (t.due === k) { const s = state.subjects[t.subjectId]; out.push({ kind: t.examId ? 'examen' : 'fecha', title: t.title, subject: s ? s.name : '', done: !!t.done, allDay: true, examId: t.examId || '', taskId: tid }); }
   for (const [id, e] of Object.entries(state.exams || {})) if (e && e.date === k && !out.some((o) => o.examId === id)) { const su = state.subjects[e.subjectId]; out.push({ kind: 'examen', title: 'Examen ' + (e.title || '') + (su ? ' · ' + su.name : ''), subject: su ? su.name : '', done: false, allDay: true, examId: id }); }
-  for (const b of state.plan.blocks || []) if (b.day === k) out.push({ kind: 'plan', planId: b.id, title: b.title, subject: b.subject, start: toMin(b.start), end: Math.max(toMin(b.end), toMin(b.start) + 20), done: !!b.done, allDay: false });
+  for (const b of state.plan.blocks || []) if (b.day === k) out.push(blkTimed(b) ? { kind: 'plan', planId: b.id, title: b.title, subject: b.subject, start: toMin(b.start), end: Math.max(toMin(b.end), toMin(b.start) + 20), done: !!b.done, allDay: false } : { kind: 'plan', planId: b.id, title: b.title + ' (sin hora)', subject: b.subject, done: !!b.done, allDay: true, noTime: true });
   out.forEach((o) => { o.day = k; });
   return out;
 }
@@ -6800,7 +6807,7 @@ async function deletePlan() {
 }
 async function addPlanToCalendar() {
   if (!mcp || state.planBusy) return;
-  const pend = (state.plan.blocks || []).filter((b) => !b.cal && !b.done);
+  const pend = (state.plan.blocks || []).filter((b) => !b.cal && !b.done && blkTimed(b));
   let n = 0, skipped = 0;
   state.planBusy = true; state.planConfirm = false; renderAgents();
   try {
@@ -6827,7 +6834,7 @@ async function addPlanToCalendar() {
 }
 function renderPlan(box) {
   const blocks = (state.plan.blocks || []).slice().sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start));
-  const pendingCal = blocks.filter((b) => !b.cal && !b.done).length;
+  const pendingCal = blocks.filter((b) => !b.cal && !b.done && blkTimed(b)).length;
   const sel = h('select', { id: 'planHours', 'aria-label': 'Horas de estudio al día', onchange: (e) => { state.planHours = Number(e.target.value); } },
     [1, 2, 3, 4, 5, 6].map((n) => h('option', { value: String(n), text: n + (n === 1 ? ' hora al día' : ' horas al día') })));
   sel.value = String(state.planHours);
@@ -6856,7 +6863,7 @@ function renderPlan(box) {
       h('h3', { text: day === todayISO() ? 'Hoy' : daysUntil(day) === 1 ? 'Mañana' : fmtDay(day) }),
       h('ul', { class: 'tasks' }, list.map((b) => h('li', { class: 'blk' + (b.done ? ' done' : '') },
         h('input', { type: 'checkbox', checked: b.done ? true : false, 'aria-label': 'Hecho: ' + b.title, onchange: (e) => { if (e.target.checked) habBlockEv(b, true); put('plan/current', { ...state.plan, blocks: state.plan.blocks.map((x) => x.id === b.id ? { ...x, done: e.target.checked } : x) }); renderAgents(); renderHome(); } }),
-        h('span', { class: 'when', text: b.start + '–' + b.end }),
+        h('span', { class: 'when', text: blkWhen(b) }),
         h('div', {}, h('div', { class: 'blk-t', text: b.title }),
           h('div', { class: 't-meta' }, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), h('span', { text: b.subject }), b.cal ? h('span', { class: 'due', text: 'En tu calendario' }) : null)))))));
   }
@@ -7765,7 +7772,7 @@ function habLog(k, o, s, extra) {
 }
 function habBlockEv(b, ok) {
   const sid = Object.keys(state.subjects).find((k) => state.subjects[k].name === b.subject) || '';
-  habLog('bloque', ok ? 1 : 0, sid, { h: parseInt(String(b.start).slice(0, 2), 10) || 0, m: Math.max(0, toMin(b.end) - toMin(b.start)), wd: new Date(b.day + 'T12:00:00').getDay() });
+  habLog('bloque', ok ? 1 : 0, sid, { h: parseInt(String(b.start).slice(0, 2), 10) || 0, m: blkDur(b), wd: new Date(b.day + 'T12:00:00').getDay() });
 }
 function appendKids(box, ...k) { box.append(...k.flat().filter((x) => x != null && x !== false)); }
 function habPl(d) { return /s$/.test(d) ? d : d + 's'; }
@@ -8467,7 +8474,7 @@ function stSaveSession(tm, minutes, completed) {
   put('sessions/' + id, data);
   try { habLog('sesion', completed ? 1 : 0, tm.sid || '', { h: new Date(start).getHours(), m: minutes, wd: new Date(start).getDay() }); } catch (e) {}
   if (tm.blockId) {
-    const b = (state.plan.blocks || []).find((x) => x.id === tm.blockId), need = b ? Math.max(1, toMin(b.end) - toMin(b.start)) : 0;
+    const b = (state.plan.blocks || []).find((x) => x.id === tm.blockId), need = b ? Math.max(1, blkDur(b)) : 0;
     const got = sesList().filter((s) => s.blockId === tm.blockId).reduce((a, s) => a + s.minutes, 0);
     if (b && !b.done && got >= need * 0.8) { habBlockEv(b, true); put('plan/current', { ...state.plan, blocks: state.plan.blocks.map((x) => x.id === b.id ? { ...x, done: true } : x) }); toast('Bloque del plan marcado como hecho.'); }
   }
@@ -8954,7 +8961,7 @@ function stCalRender() {
     sx.t.map((t) => h('button', { class: 'stc-it tk', type: 'button', onclick: () => openItemDetail('task', t.id) }, h('span', { class: 'stc-tag', text: 'ENTREGA' }), h('b', { text: t.title }), h('span', { class: 'small', text: ((state.subjects[t.subjectId] || {}).name || 'General') + ' · ver ficha' }))),
     rows.map((b) => h('div', { class: 'stc-s' + (b.done ? ' done' : ''), style: '--h:' + hueOf(b.subject) },
       h('input', { type: 'checkbox', checked: b.done ? true : false, 'aria-label': 'Hecha: ' + b.title, onchange: async (e) => { try { habBlockEv(b, e.target.checked); } catch (x) {} await stSavePlan(stBlocks().map((y) => y.id === b.id ? { ...y, done: e.target.checked } : y)); } }),
-      h('button', { class: 'stc-sb', type: 'button', onclick: () => openSessModal(b.id), 'aria-label': 'Editar sesión: ' + b.title }, h('span', { class: 'when', text: b.start + '–' + b.end }), h('span', { class: 'stc-st' }, h('b', { text: b.subject }), h('span', { class: 'small', text: b.title }), b.note ? h('span', { class: 'small stc-note', text: b.note.split('\n')[0].slice(0, 70) }) : null), h('span', { class: 'chev', 'aria-hidden': 'true' }, ic('chev'))))),
+      h('button', { class: 'stc-sb', type: 'button', onclick: () => openSessModal(b.id), 'aria-label': 'Editar sesión: ' + b.title }, h('span', { class: 'when', text: blkWhen(b) }), h('span', { class: 'stc-st' }, h('b', { text: b.subject }), h('span', { class: 'small', text: b.title }), b.note ? h('span', { class: 'small stc-note', text: b.note.split('\n')[0].slice(0, 70) }) : null), h('span', { class: 'chev', 'aria-hidden': 'true' }, ic('chev'))))),
     !sx.e.length && !sx.t.length && !rows.length ? h('p', { class: 'small', text: 'Sin sesiones este día.' }) : null);
   const exams = examList().filter((e) => e.date >= today && state.subjects[e.subjectId]).slice(0, 6);
   const tasks = Object.entries(state.tasks || {}).map(([id, t]) => ({ id, ...t })).filter((t) => t && !t.done && !t.examId && t.due && t.due >= today).sort((a, b) => a.due.localeCompare(b.due)).slice(0, 5);
@@ -9133,8 +9140,8 @@ function gcEvDelBtn(it, fin) {
 
 /* Sincronización automática: cualquier cambio del plan (crear, mover, editar, borrar sesiones) se refleja en Google Calendar */
 function gcAuto(prev, next) {
-  const seen = new Set(prev.map((b) => b.id)), today = todayISO();
-  const fresh = mcp ? next.filter((b) => b && b.id && !seen.has(b.id) && !b.cal && !b.gid && !b.done && b.day >= today && b.start && b.end).slice(0, 40).map((b) => b.id) : [];
+  const seen = new Set(prev.map((b) => b.id)), today = todayISO(), noHora = new Set(prev.filter((b) => b && !blkTimed(b)).map((b) => b.id));
+  const fresh = mcp ? next.filter((b) => b && b.id && (!seen.has(b.id) || noHora.has(b.id)) && !b.cal && !b.gid && !b.done && b.day >= today && b.start && b.end).slice(0, 40).map((b) => b.id) : [];
   gcChain = gcChain.then(async () => {
     const a = fresh.length ? await gcPushBlocks(fresh) : null, d = await gcSyncPlanDiff(prev, next);
     const fails = (a ? a.fail : []).concat(d.fail);
@@ -10470,7 +10477,7 @@ async function esAiPlan(W) {
   const input = 'Eres el planificador de estudio de un estudiante universitario. Hoy es ' + today + ' y son las ' + hhmm(now.getHours() * 60 + now.getMinutes()) + '. Diseña el MEJOR plan posible entre ' + today + ' y ' + lastDay + '.\n\n'
     + condBlock() + habitBlockOnly() + target + '\n\nDÍAS DISPONIBLES (datos; ' + (hasInstr ? 'no coloques nada fuera del límite absoluto ni encima de lo ocupado' : 'no coloques nada fuera de la ventana ni encima de lo ocupado') + ', deja 10 min libres entre bloques):\n' + dayLines + '\n\n'
     + (hasInstr ? 'INSTRUCCIONES DEL ESTUDIANTE (PRIORIDAD ABSOLUTA, mandan sobre todo lo demás): ' + instr + '\nLas horas máximas por día, la ventana horaria y los días de descanso de las condiciones son SOLO valores por defecto. Si las instrucciones piden otras horas, días o franjas (por ejemplo «de 15:00 a 16:00 todos los días»), haz exactamente eso aunque contradiga esas condiciones, y no avises de que las incumples. En lo que las instrucciones no digan nada, usa las condiciones. Lo único que no puedes hacer es pisar lo ocupado ni salirte del límite absoluto. En el resumen di brevemente cómo has aplicado sus instrucciones.\n\n' : 'CONVERSACIÓN CON EL ESTUDIANTE: ' + instr + '\n\n')
-    + 'Criterios: ' + crit + ' Mezcla asignaturas con sentido (máx. ' + c.maxSubj + ' por día); bloques de ' + c.block + ' min (entre 30 y 90); respeta las horas máximas de cada día.\n'
+    + 'Criterios: ' + crit + ' Si el estudiante pide bloques SIN hora concreta (por ejemplo «solo pon bloques de estudio para cada día, sin horas»), devuelve esos bloques con "sinHora":true y "duracion":minutos (entre 30 y 180) y SIN "inicio" ni "fin": cuentan para las horas de ese día, pero él elegirá la hora ese mismo día. Mezcla asignaturas con sentido (máx. ' + c.maxSubj + ' por día); bloques de ' + c.block + ' min (entre 30 y 90); respeta las horas máximas de cada día.\n'
     + 'Responde SOLO un JSON: {"resumen":"2-3 frases explicando la estrategia en lenguaje directo","avisos":["hasta 3 riesgos concretos"],' + schema + '}';
   const raw = await sample.json(input, { modelTier: 'default', cache: false, noRoutine: !ctxOn });
   if (!raw || typeof raw !== 'object') throw { code: 'invalid_json' };
@@ -10480,7 +10487,15 @@ async function esAiPlan(W) {
   const out = []; let dropped = 0;
   for (const x of list) {
     const d = x.dia, e = general ? null : exams[0], sid = general ? (subsSel.find(([id]) => id === x.subjectId) || [])[0] : e.subjectId;
-    if (!sid || !days.includes(d) || (e && d >= e.date) || !reTime.test(x.inicio || '') || !reTime.test(x.fin || '')) { dropped++; continue; }
+    if (!sid || !days.includes(d) || (e && d >= e.date)) { dropped++; continue; }
+    if (x.sinHora === true || (!x.inicio && !x.fin && Number(x.duracion) > 0)) {
+      const len0 = Math.round(Number(x.duracion) || c.block), kind0 = ['estudiar', 'practicar', 'repaso'].includes(x.tipo) ? x.tipo : 'estudiar', tp0 = e ? esTopics(e).find((t) => String(t.id) === String(x.topicId)) : null;
+      if (len0 < 15 || len0 > 240 || used[d] + len0 > capDay(d) + 1) { dropped++; continue; }
+      used[d] += len0;
+      out.push({ id: uid(), day: d, start: '', end: '', noTime: true, dur: len0, subject: state.subjects[sid].name, title: String(x.titulo || (tp0 ? tp0.name : (e && e.title) || 'Estudio')).slice(0, 80), done: false, cal: false, auto: !general, ai: true, kind: kind0, ...(e ? { examId: e.id, topicId: tp0 ? tp0.id : '_all' } : {}), ...(tp0 && tp0.libId ? { libId: tp0.libId } : {}), ...(x.consejo ? { tip: String(x.consejo).slice(0, 160) } : {}) });
+      continue;
+    }
+    if (!reTime.test(x.inicio || '') || !reTime.test(x.fin || '')) { dropped++; continue; }
     const a = toMin(x.inicio), b = toMin(x.fin), len = b - a;
     if (len < 25 || len > 120 || a < floorOf(d) || b > winE || capDay(d) <= 0 || used[d] + len > capDay(d) + 1 || clash(a, b, taken[d])) { dropped++; continue; }
     const kind = ['estudiar', 'practicar', 'repaso'].includes(x.tipo) ? x.tipo : 'estudiar', tp = e ? esTopics(e).find((t) => String(t.id) === String(x.topicId)) : null;
@@ -10497,9 +10512,9 @@ async function esAiPlan(W) {
 }
 function wzPreview() {
   const body = $('#wzBody'), W = state.es.wiz, d = W.draft; if (!body || !d) return;
-  const mins = d.blocks.reduce((a, b) => a + toMin(b.end) - toMin(b.start), 0), bySub = {}; d.blocks.forEach((b) => { bySub[b.subject] = (bySub[b.subject] || 0) + toMin(b.end) - toMin(b.start); });
+  const mins = d.blocks.reduce((a, b) => a + blkDur(b), 0), bySub = {}; d.blocks.forEach((b) => { bySub[b.subject] = (bySub[b.subject] || 0) + blkDur(b); });
   const byDay = new Map(); d.blocks.slice().sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start)).forEach((b) => { if (!byDay.has(b.day)) byDay.set(b.day, []); byDay.get(b.day).push(b); });
-  const list = h('div', { class: 'wz-prev' }); for (const [day, bl] of byDay) list.append(h('div', { class: 'wz-day' }, h('b', { text: day === todayISO() ? 'Hoy' : fmtDay(day) }), h('ul', {}, bl.map((b) => h('li', {}, h('span', { class: 'when', text: b.start + '–' + b.end }), h('span', {}, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), ' ' + b.subject + ' · ' + b.title + ' ', b.kind && ES_KIND[b.kind] ? h('span', { class: 'chip-ev', text: ES_KIND[b.kind] }) : null))))));
+  const list = h('div', { class: 'wz-prev' }); for (const [day, bl] of byDay) list.append(h('div', { class: 'wz-day' }, h('b', { text: day === todayISO() ? 'Hoy' : fmtDay(day) }), h('ul', {}, bl.map((b) => h('li', {}, h('span', { class: 'when', text: blkWhen(b) }), h('span', {}, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), ' ' + b.subject + ' · ' + b.title + ' ', b.kind && ES_KIND[b.kind] ? h('span', { class: 'chip-ev', text: ES_KIND[b.kind] }) : null))))));
   body.replaceChildren(wzHead('Tu plan propuesto', d.blocks.length + ' bloques · ' + fmtMin(mins) + ' en total'),
     d.summary ? h('div', { class: 'es-coach' }, h('h3', { text: 'Estrategia' }), h('p', { text: d.summary })) : null,
     d.alerts && d.alerts.length ? h('ul', { class: 'st-ins' }, d.alerts.map((a) => h('li', { text: a }))) : null,
@@ -10655,6 +10670,7 @@ function esPlanView(box) {
     h('button', { class: 'btn primary', type: 'button', disabled: es.coach || state.autoBusy || !sample, onclick: openPlanWizard, text: 'Crear mi plan con IA' }),
     h('button', { class: 'btn', type: 'button', disabled: es.coach || state.autoBusy, onclick: () => esPlan(true), text: (p.blocks || []).some((b) => b.auto) ? 'Reorganizar todo' : 'Organizar todo' }),
     h('button', { class: 'btn', type: 'button', disabled: !sample || es.coach || state.autoBusy, onclick: esCoach, text: 'Afinar con IA' }),
+    h('button', { class: 'btn', type: 'button', disabled: !sample || es.coach || state.autoBusy, onclick: openPlanChange, text: 'Pedir cambios a la IA' }),
     state.autoBusy || es.coach ? h('span', { class: 'thinking', text: es.coach ? 'Claude está afinando…' : 'Organizando…' }) : null);
   const auto = h('label', { class: 'mu-sync' }, h('input', { type: 'checkbox', checked: c.auto ? true : false, onchange: (e) => { esSaveCond({ auto: e.target.checked }); renderAgents(); } }), h('span', { text: 'Reorganizar solo cuando cambie algo (examen, condiciones) o no llegue a un bloque, sin que tenga que pulsar nada.' }));
   appendKids(box, cards, tb, auto);
@@ -10669,15 +10685,148 @@ function esPlanView(box) {
     box.append(h('div', { class: 'ag-day' + (day === today ? ' today' : '') }, h('h3', { text: day === today ? 'Hoy' : daysUntil(day) === 1 ? 'Mañana' : fmtDay(day) }),
       h('ul', { class: 'tasks' }, list.map((b) => h('li', { class: 'blk' + (b.done ? ' done' : '') },
         h('input', { type: 'checkbox', checked: b.done ? true : false, 'aria-label': 'Hecho: ' + b.title, onchange: (e) => { habBlockEv(b, e.target.checked); put('plan/current', { ...state.plan, blocks: state.plan.blocks.map((x) => x.id === b.id ? { ...x, done: e.target.checked } : x) }); renderAgents(); renderHome(); } }),
-        h('span', { class: 'when', text: b.start + '–' + b.end }),
+        h('span', { class: 'when', text: blkWhen(b) }),
         h('div', {}, h('div', { class: 'blk-t', text: b.title }),
           h('div', { class: 't-meta' }, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), h('span', { text: b.subject }), b.kind && ES_KIND[b.kind] ? h('span', { class: 'chip-ev', text: ES_KIND[b.kind] }) : null, b.cal ? h('span', { class: 'due', text: 'En tu calendario' }) : null),
           b.tip ? h('div', { class: 'es-tip', text: b.tip }) : null,
-          !b.done ? h('div', { class: 'es-bact' }, h('button', { class: 'btn sm', type: 'button', onclick: () => esStartBlock(b), text: 'Empezar' }), h('button', { class: 'btn sm', type: 'button', onclick: () => esOpenBlockApuntes(b), text: b.libId ? 'Abrir apuntes' : 'Ir a la asignatura' })) : null))))));
+          !b.done ? h('div', { class: 'es-bact' }, !blkTimed(b) ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => blkPickTime(b), text: 'Elegir hora' }) : null, h('button', { class: 'btn sm', type: 'button', onclick: () => esStartBlock(b), text: 'Empezar' }), h('button', { class: 'btn sm', type: 'button', onclick: () => esOpenBlockApuntes(b), text: b.libId ? 'Abrir apuntes' : 'Ir a la asignatura' })) : null))))));
   }
-  const pend = (p.blocks || []).filter((b) => !b.cal && !b.done && b.auto).length;
+  const pend = (p.blocks || []).filter((b) => !b.cal && !b.done && b.auto && blkTimed(b)).length;
   if (mcp) box.append(h('div', { class: 'toolbar' }, h('button', { class: 'btn', type: 'button', disabled: !pend || state.planBusy, onclick: () => { state.planConfirm = true; addPlanToCalendar(); }, text: pend ? 'Añadir ' + pend + (pend === 1 ? ' bloque' : ' bloques') + ' a Google Calendar' : 'Todo en tu calendario' })));
 }
+/* ---------- Bloques sin hora: elegir la hora el mismo día ---------- */
+function blkRefresh() { try { if (state.view === 'agentes') renderAgents(); } catch (e) {} try { renderHome(); } catch (e) {} try { if (state.view === 'calendario') renderCalView(); } catch (e) {} try { if (typeof dvPaint === 'function' && $('#dayView')) dvPaint(); } catch (e) {} }
+function blkPickTime(b0) {
+  const b = ((state.plan && state.plan.blocks) || []).find((x) => x.id === b0.id) || b0, dur = blkDur(b);
+  const old = $('#blkPick'); if (old) old.remove();
+  const close = () => { const m = $('#blkPick'); if (m) m.remove(); };
+  const c = cond(), winS = toMin(c.start), winE = Math.max(toMin(c.end), winS + dur);
+  const others = ((state.plan && state.plan.blocks) || []).filter((x) => x && x.id !== b.id && x.day === b.day && blkTimed(x)).map((x) => [toMin(x.start), toMin(x.end)]);
+  let busy = []; try { busy = busyOn(b.day, undefined, false); } catch (e) { busy = []; }
+  const taken = busy.concat(others);
+  const nowM = b.day === todayISO() ? Math.ceil((new Date().getHours() * 60 + new Date().getMinutes() + 5) / 15) * 15 : 0;
+  const sugg = []; for (let s = Math.max(winS, nowM); s + dur <= winE && sugg.length < 5; s += 15) { if (!clash(s - 5, s + dur + 5, taken)) { sugg.push(s); s += Math.max(0, dur - 15); } }
+  const err = h('p', { class: 'mu-err', role: 'alert', hidden: true });
+  const t1 = h('input', { type: 'time', 'aria-label': 'Hora de inicio' }); t1.value = sugg.length ? hhmm(sugg[0]) : hhmm(Math.max(winS, nowM));
+  let saving = false;
+  const save = async (v) => {
+    if (saving) return; err.hidden = true;
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v || '')) { err.textContent = 'Elige la hora de inicio.'; err.hidden = false; return; }
+    const s = toMin(v), e = s + dur;
+    if (e > 1439) { err.textContent = 'No cabe antes de medianoche: elige una hora más temprana.'; err.hidden = false; return; }
+    saving = true;
+    try {
+      await put('plan/current', { ...state.plan, blocks: (state.plan.blocks || []).map((x) => { if (x.id !== b.id) return x; const nb = { ...x, start: v, end: hhmm(e) }; delete nb.noTime; return nb; }), updatedAt: Date.now() });
+      close(); toast('Hora elegida: ' + v + '–' + hhmm(e) + (clash(s, e, taken) ? ' (ojo: se solapa con algo de tu agenda).' : '.')); blkRefresh();
+    } catch (er) { saving = false; err.textContent = 'No se pudo guardar. Inténtalo de nuevo.'; err.hidden = false; }
+  };
+  document.body.append(h('div', { class: 'modal-bg', id: 'blkPick', style: 'z-index:125', onclick: (e) => { if (e.target.id === 'blkPick') close(); } },
+    h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Elegir la hora del bloque' },
+      h('div', { class: 'sec-head' }, h('div', {}, h('h2', { text: 'Elige la hora' }), h('p', { class: 'small', text: b.subject + ' · ' + b.title + ' · ' + fmtDay(b.day) + ' · ' + blkMinTxt(dur) })), h('button', { class: 'btn sm', type: 'button', 'aria-label': 'Cerrar', onclick: close, text: '×' })),
+      sugg.length ? h('div', {}, h('p', { class: 'small', text: 'Huecos libres ese día:' }), h('div', { class: 'wz-chips' }, sugg.map((s) => h('button', { class: 'btn', type: 'button', onclick: () => save(hhmm(s)), text: hhmm(s) + '–' + hhmm(s + dur) })))) : h('p', { class: 'small', text: 'No veo un hueco libre en tu ventana de estudio ese día; elige la hora que prefieras.' }),
+      h('form', { class: 'es-mform', onsubmit: (e) => { e.preventDefault(); save(t1.value); } }, esField('O elige otra hora de inicio', t1, 'Terminará ' + blkMinTxt(dur) + ' después.'), err,
+        h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'submit', text: 'Guardar hora' }), h('button', { class: 'btn', type: 'button', onclick: close, text: 'Cancelar' }))))));
+}
+
+/* ---------- Pedir cambios concretos a la IA sobre el plan ---------- */
+state.pc = { text: '', busy: false, draft: null, err: '' };
+const PC_CHIPS = ['Pasa los bloques del viernes al sábado.', 'Quita los bloques de repaso de esta semana.', 'Pon los bloques de esta semana sin hora, solo el día.', 'Mueve el bloque de mañana a la tarde.', 'Añade un bloque de práctica el lunes.'];
+function pcClose() { const m = $('#planChg'); if (m) m.remove(); }
+function openPlanChange() {
+  pcClose(); const P = state.pc; P.draft = null; P.err = ''; P.busy = false;
+  document.body.append(h('div', { class: 'modal-bg', id: 'planChg', onclick: (e) => { if (e.target.id === 'planChg') pcClose(); } },
+    h('div', { class: 'modal wz', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Pedir cambios a la IA' }, h('div', { id: 'pcBody' }))));
+  pcPaint();
+}
+function pcWhenTxt(b) { return fmtDay(b.day) + ' · ' + blkWhen(b); }
+function pcPaint() {
+  const body = $('#pcBody'); if (!body) return; const P = state.pc, d = P.draft;
+  const head = h('div', { class: 'sec-head' }, h('div', {}, h('h2', { text: d ? 'Cambios propuestos' : 'Pedir cambios a la IA' }), h('p', { class: 'small', text: d ? 'Revisa antes de aplicar. No se toca nada hasta que pulses Aplicar.' : 'Dile qué quieres cambiar de tu plan; solo toca lo que pidas.' })), h('button', { class: 'btn sm', type: 'button', 'aria-label': 'Cerrar', onclick: pcClose, text: '×' }));
+  if (!d) {
+    const ta = h('textarea', { rows: 4, maxlength: 2000, placeholder: 'Ej.: Pasa el bloque del viernes al sábado por la mañana. Quita el repaso del domingo. Pon los bloques de esta semana sin hora.', 'aria-label': 'Qué quieres cambiar' }); ta.value = P.text || ''; ta.oninput = () => { P.text = ta.value; };
+    body.replaceChildren(head,
+      h('div', { class: 'wz-chips' }, PC_CHIPS.map((t) => h('button', { class: 'btn sm', type: 'button', onclick: () => { P.text = (P.text ? P.text.trim() + ' ' : '') + t; ta.value = P.text; ta.focus(); }, text: t }))),
+      ta, P.err ? h('p', { class: 'mu-err', role: 'alert', text: P.err }) : null,
+      h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', disabled: P.busy || !sample, onclick: pcRun, text: P.busy ? 'La IA está pensando…' : 'Proponer cambios' }), !sample ? h('span', { class: 'small', text: 'La IA no está disponible en esta vista.' }) : null));
+    setTimeout(() => { try { ta.focus(); } catch (e) {} }, 30);
+    return;
+  }
+  const li = d.changes.map((x) => {
+    if (x.op === 'quitar') return h('li', {}, h('b', { text: 'Quitar: ' }), x.before.subject + ' · ' + x.before.title + ' (' + pcWhenTxt(x.before) + ')', x.before.cal ? h('span', { class: 'small', text: ' · también se quitará de tu Google Calendar' }) : null);
+    if (x.op === 'anadir') return h('li', {}, h('b', { text: 'Añadir: ' }), x.after.subject + ' · ' + x.after.title + ' (' + pcWhenTxt(x.after) + ')');
+    return h('li', {}, h('b', { text: 'Cambiar: ' }), x.after.subject + ' · ' + x.after.title + ' — ' + pcWhenTxt(x.before) + ' → ' + pcWhenTxt(x.after), x.before.cal ? h('span', { class: 'small', text: ' · se actualizará también en Google Calendar' }) : null);
+  });
+  body.replaceChildren(head,
+    d.summary ? h('div', { class: 'es-coach' }, h('p', { text: d.summary })) : null,
+    d.changes.length ? h('ul', { class: 'st-ins' }, li) : h('p', { class: 'note', text: 'No he podido aplicar ningún cambio válido con lo que has pedido. Prueba a ser más concreto (día, hora o bloque).' }),
+    d.dropped ? h('p', { class: 'small', text: d.dropped + (d.dropped === 1 ? ' cambio descartado' : ' cambios descartados') + ' por chocar con tu agenda o no ser válidos.' }) : null,
+    h('div', { class: 'toolbar' }, d.changes.length ? h('button', { class: 'btn primary', type: 'button', id: 'pcApply', onclick: pcApply, text: 'Aplicar ' + d.changes.length + (d.changes.length === 1 ? ' cambio' : ' cambios') }) : null, h('button', { class: 'btn', type: 'button', onclick: () => { P.draft = null; pcPaint(); }, text: 'Cambiar la petición' })));
+}
+async function pcRun() {
+  const P = state.pc; if (P.busy || !sample) return; const text = String(P.text || '').trim(); if (!text) { P.err = 'Escribe qué quieres cambiar.'; pcPaint(); return; }
+  P.busy = true; P.err = ''; pcPaint();
+  try {
+    const today = todayISO(), now = new Date(), lastDay = addDaysISO(today, 27), reTime = /^([01]\d|2[0-3]):[0-5]\d$/;
+    let evs = []; if (mcp && routine().useCal) { try { evs = await fetchEvents(today, lastDay); } catch (e) { evs = []; } }
+    const all = (state.plan && state.plan.blocks) || [];
+    const cand = all.filter((b) => b && b.id && !b.done && b.day >= today && b.day <= lastDay).sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start)).slice(0, 80), ids = new Set(cand.map((b) => b.id));
+    const lines = cand.map((b) => '- id ' + b.id + ' | ' + b.day + ' | ' + (blkTimed(b) ? b.start + '–' + b.end : 'sin hora, ' + blkDur(b) + ' min') + ' | ' + b.subject + ' | ' + b.title + ' | ' + (b.kind || 'estudiar'));
+    const busyL = []; for (let i = 0; i <= 27; i++) { const dd = addDaysISO(today, i); let bz = []; try { bz = busyOn(dd, evs, false); } catch (e) {} if (bz.length) busyL.push(dd + ': ' + bz.map(([a, z]) => hhmm(a) + '–' + hhmm(Math.min(z, 1439))).join(', ')); }
+    const names = sortedSubjects().map(([, s]) => s.name);
+    const input = 'Eres el planificador de estudio de un estudiante universitario. Hoy es ' + today + ' y son las ' + hhmm(now.getHours() * 60 + now.getMinutes()) + '. El estudiante ya tiene un plan y te pide CAMBIOS CONCRETOS sobre él. Haz solo lo que pide y no toques nada más.\n\n'
+      + condBlock() + habitBlockOnly() + 'BLOQUES ACTUALES (datos; id | día | hora | asignatura | título | tipo):\n' + (lines.join('\n') || '(ninguno)') + '\n\nOCUPADO (clases, rutina y eventos; no pongas bloques con hora encima):\n' + (busyL.join('\n') || 'nada') + '\n\nASIGNATURAS: ' + (names.join(', ') || '(ninguna)') + '\n\n'
+      + 'PETICIÓN DEL ESTUDIANTE (PRIORIDAD ABSOLUTA; la ventana horaria, las horas máximas y los días de descanso de las condiciones solo valen donde la petición no diga otra cosa): ' + text.slice(0, 2000) + '\n\n'
+      + 'Devuelve en "cambios" operaciones de estos tipos: {"op":"mover"|"editar"|"quitar"|"anadir","id":"id exacto del bloque (no en anadir)","dia":"AAAA-MM-DD","inicio":"HH:MM","fin":"HH:MM","sinHora":true|false,"duracion":minutos,"titulo":"máx. 70 caracteres","tipo":"estudiar|practicar|repaso","asignatura":"nombre exacto (solo en anadir)"}. En mover/editar pon solo los campos que cambian. Para dejar un bloque sin hora (solo el día; el estudiante elegirá la hora ese día) usa "sinHora":true; para darle hora a uno sin hora pon "inicio" y "fin". Máximo 60 cambios. Responde SOLO un JSON: {"resumen":"1-2 frases de lo que has hecho","cambios":[...]}';
+    const raw = await sample.json(input, { modelTier: 'default', cache: false });
+    if (!raw || typeof raw !== 'object') throw { code: 'invalid_json' };
+    const cur = new Map(all.map((b) => [b.id, { ...b }])), changes = [], added = []; let dropped = 0;
+    const takenOf = (day, selfId) => { let bz = []; try { bz = busyOn(day, evs, false); } catch (e) {} return bz.concat([...cur.values(), ...added].filter((x) => x && x.id !== selfId && x.day === day && blkTimed(x)).map((x) => [toMin(x.start), toMin(x.end)])); };
+    const applyWhen = (nb, x) => {
+      if (x.sinHora === true) { const len = Math.round(Number(x.duracion) || blkDur(nb)); if (len < 15 || len > 240) return false; nb.start = ''; nb.end = ''; nb.noTime = true; nb.dur = len; return true; }
+      if (x.inicio || x.fin) {
+        if (!reTime.test(x.inicio || '') || !reTime.test(x.fin || '') || toMin(x.fin) - toMin(x.inicio) < 15 || toMin(x.fin) - toMin(x.inicio) > 240) return false;
+        nb.start = x.inicio; nb.end = x.fin; delete nb.noTime; return true;
+      }
+      return true;
+    };
+    for (const x of (Array.isArray(raw.cambios) ? raw.cambios : []).slice(0, 60)) {
+      if (!x || typeof x !== 'object') continue;
+      const op = String(x.op || '').toLowerCase().replace('ñ', 'n'), dia = /^\d{4}-\d{2}-\d{2}$/.test(x.dia || '') ? x.dia : '';
+      if (dia && (dia < today || dia > lastDay)) { dropped++; continue; }
+      const kindOk = ['estudiar', 'practicar', 'repaso'].includes(x.tipo) ? x.tipo : '';
+      if (op === 'quitar') { const b = ids.has(x.id) && cur.get(x.id); if (!b) { dropped++; continue; } cur.delete(x.id); changes.push({ op, before: b }); continue; }
+      if (op === 'mover' || op === 'editar') {
+        const b = ids.has(x.id) && cur.get(x.id); if (!b) { dropped++; continue; }
+        const nb = { ...b }; if (dia) nb.day = dia; if (x.titulo) nb.title = String(x.titulo).slice(0, 80); if (kindOk) nb.kind = kindOk;
+        if (!applyWhen(nb, x)) { dropped++; continue; }
+        if (nb.day === b.day && nb.start === b.start && nb.end === b.end && nb.title === b.title && nb.kind === b.kind && !!nb.noTime === !!b.noTime) continue;
+        if (blkTimed(nb) && (nb.day !== b.day || nb.start !== b.start || nb.end !== b.end) && clash(toMin(nb.start), toMin(nb.end), takenOf(nb.day, b.id))) { dropped++; continue; }
+        cur.set(b.id, nb); changes.push({ op: 'mover', before: b, after: nb }); continue;
+      }
+      if (op === 'anadir') {
+        const sid = Object.keys(state.subjects || {}).find((k) => String(state.subjects[k].name).toLowerCase() === String(x.asignatura || '').toLowerCase());
+        if (!sid || !dia) { dropped++; continue; }
+        const nb = { id: uid(), day: dia, start: '', end: '', subject: state.subjects[sid].name, title: String(x.titulo || 'Estudio').slice(0, 80), done: false, cal: false, auto: false, ai: false, kind: kindOk || 'estudiar' };
+        if (x.sinHora === true || (!x.inicio && !x.fin)) { if (!applyWhen(nb, { sinHora: true, duracion: x.duracion || cond().block })) { dropped++; continue; } }
+        else if (!applyWhen(nb, x)) { dropped++; continue; }
+        if (blkTimed(nb) && clash(toMin(nb.start), toMin(nb.end), takenOf(nb.day, nb.id))) { dropped++; continue; }
+        added.push(nb); changes.push({ op: 'anadir', after: nb }); continue;
+      }
+      dropped++;
+    }
+    P.draft = { blocks: all.map((b) => cur.get(b.id)).filter(Boolean).concat(added), changes, dropped, summary: String(raw.resumen || '').slice(0, 400) };
+  } catch (e) { P.err = e && e.message && !e.code ? e.message : (ERR[e && e.code] || 'No se pudo generar los cambios. Inténtalo de nuevo.'); }
+  finally { P.busy = false; pcPaint(); }
+}
+async function pcApply() {
+  const P = state.pc, d = P.draft, btn = $('#pcApply'); if (!d || !d.changes.length) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  try {
+    await put('plan/current', { ...state.plan, blocks: d.blocks, updatedAt: Date.now() });
+    const n = d.changes.length; P.draft = null; P.text = ''; pcClose(); toast('Plan cambiado: ' + n + (n === 1 ? ' cambio aplicado.' : ' cambios aplicados.')); blkRefresh();
+  } catch (e) { toast('No se pudieron guardar los cambios.'); if (btn) { btn.disabled = false; btn.textContent = 'Aplicar ' + d.changes.length + (d.changes.length === 1 ? ' cambio' : ' cambios'); } }
+}
+
 function esNewForm() { const first = state.subjects[state.sel] ? state.sel : (sortedSubjects()[0] || [''])[0]; return { subjectId: first, title: 'Examen', date: addDaysISO(todayISO(), 14), time: '', weight: 2 }; }
 function esExamView(box) {
   const es = state.es, subs = sortedSubjects();
@@ -12052,7 +12201,7 @@ const PF_LEVEL = ['No lo sé', 'Flojo', 'Bien', 'Lo domino'];
 function pfNowMin() { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); }
 function pfOverdue() {
   const t = todayISO(), nm = pfNowMin(), from = addDaysISO(t, -14);
-  return ((state.plan && state.plan.blocks) || []).filter((b) => b && !b.done && b.day && b.end && b.day >= from && (b.day < t || (b.day === t && toMin(b.end) <= nm))).sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start));
+  return ((state.plan && state.plan.blocks) || []).filter((b) => b && !b.done && b.day && (b.end || b.noTime) && b.day >= from && (b.day < t || (b.day === t && b.end && toMin(b.end) <= nm))).sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start));
 }
 function pfWhen(b) { const n = daysUntil(b.day); return (n === 0 ? 'hoy' : n === -1 ? 'ayer' : fmtDay(b.day)) + ' ' + b.start; }
 /* --- recordatorios de bloques de estudio (código propio, sin IA) --- */
@@ -12080,7 +12229,7 @@ function remCheck() {
   const R = state.rem; if (!R || !R.on || !state.ld.plan) return;
   if (state.remFired.d !== todayISO()) state.remFired = { d: todayISO() };
   const nm = pfNowMin(), t = todayISO();
-  ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day === t && !b.done).forEach((b) => {
+  ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day === t && !b.done && blkTimed(b)).forEach((b) => {
     const s = toMin(b.start), e = toMin(b.end);
     if (R.before > 0 && nm >= s - R.before && nm < s && !state.remFired[b.id + 'b']) { remMark(b.id + 'b'); remFire(b, 'before', s - nm); }
     else if (R.start && nm >= s && nm < Math.min(e, s + 10) && !state.remFired[b.id + 's']) { remMark(b.id + 's'); remFire(b, 'start', nm - s); }
@@ -12104,7 +12253,7 @@ function remSysOk() {
   let framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
   return !(ios || framed);
 }
-function remIcsBlocks() { const t = todayISO(); return ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day >= t && !b.done).sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start)); }
+function remIcsBlocks() { const t = todayISO(); return ((state.plan && state.plan.blocks) || []).filter((b) => b && b.day >= t && !b.done && blkTimed(b)).sort((a, b) => (a.day + a.start).localeCompare(b.day + b.start)); }
 function remIcsText(blocks, before) {
   const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
   const dt = (d, t) => d.replace(/-/g, '') + 'T' + t.replace(':', '') + '00';
