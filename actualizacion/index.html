@@ -4057,18 +4057,18 @@ function mdTable(lines, at) {
 function md(text) {
   text = stripEmo(text);
   const root = h('div', { class: 'md' }), L = String(text).split('\n').map((x) => x.replace(/\s+$/, ''));
-  let list = null, lt = '';
-  const lst = (type) => { if (!list || lt !== type) { list = h(type); root.append(list); lt = type; } return list; };
+  let list = null, lt = '', olN = 0;
+  const lst = (type, off) => { if (!list || lt !== type) { list = h(type, type === 'ol' && off > 0 ? { style: '--s0:' + off } : {}); root.append(list); lt = type; } return list; };
   for (let i = 0; i < L.length; i++) {
-    const line = L[i];
+    const line = L[i]; if (line.trim() && !/^\s*([-*•]|\d+[.)])\s/.test(line)) olN = 0;
     if (/^\s*```/.test(line)) { list = null; const lang = line.trim().replace(/^`+/, '').trim(), buf = []; i++; while (i < L.length && !/^\s*```/.test(L[i])) buf.push(L[i++]); let gch = null; try { gch = gcFrom(lang, buf); } catch (e) {} if (gch) root.append(gcEl(gch)); else root.append(h('pre', {}, h('code', { text: buf.join('\n') }))); continue; }
     if (line.includes('|') && i + 1 < L.length && /^\s*\|/.test(line) && MD_SEP.test(L[i + 1]) && L[i + 1].includes('-')) { list = null; const t = mdTable(L, i); root.append(t.el); i = t.next - 1; continue; }
     const hm = line.match(/^#{1,4}\s+(.*)/), lm = line.match(/^(\s*)[-*•]\s+(.*)/), om = line.match(/^(\s*)\d+[.)]\s+(.*)/), qm = line.match(/^\s*>\s?(.*)/);
     const lv = (sp) => Math.min(3, Math.floor(sp.replace(/\t/g, '  ').length / 2));
-    if (hm) { list = null; root.append(h('h3', {}, inline(hm[1]))); }
+    if (hm) { list = null; const lvl = (line.match(/^#+/) || ['##'])[0].length; root.append(lvl === 1 ? h('h2', { class: 'md-h1' }, inline(hm[1])) : lvl === 2 ? h('h3', {}, inline(hm[1])) : h('h4', {}, inline(hm[1]))); }
     else if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { list = null; root.append(h('hr')); }
     else if (lm) { const l = lv(lm[1]); lst('ul').append(h('li', { class: l ? 'lv' + l : '' }, inline(lm[2]))); }
-    else if (om) { const l = lv(om[1]); lst('ol').append(h('li', { class: l ? 'lv' + l : '' }, inline(om[2]))); }
+    else if (om) { const l = lv(om[1]); if (!l) olN++; lst('ol', olN - 1).append(h('li', { class: l ? 'lv' + l : '' }, inline(om[2]))); }
     else if (qm) { list = null; const last = root.lastChild; if (last && last.tagName === 'BLOCKQUOTE' && L[i - 1] && /^\s*>/.test(L[i - 1])) last.append(h('br'), inline(qm[1])); else root.append(h('blockquote', {}, inline(qm[1]))); }
     else if (line.trim()) { list = null; root.append(h('p', {}, inline(line))); }
     else list = null;
@@ -7333,6 +7333,12 @@ function renderAgentPage(box, id) {
 const ESQ_TYPES = { llaves: 'Llaves', flechas: 'Flechas', desarrollo: 'Desarrollo', radial: 'Mapa mental', conceptual: 'Mapa conceptual', flujo: 'Diagrama de flujo' };
 const ESQ_TREE = ['llaves', 'flechas', 'desarrollo', 'radial', 'conceptual'];
 state.esqType = {};
+async function faPool(n, limit, fn) {
+  const res = new Array(n); let next = 0, fail = null;
+  const w = async () => { while (!fail) { const i = next++; if (i >= n) return; try { res[i] = await fn(i); } catch (e) { fail = fail || { e }; return; } } };
+  await Promise.all(Array.from({ length: Math.min(limit, n) }, w));
+  if (fail) throw fail.e; return res;
+}
 function esqChunks(notes) {
   const out = []; let cur = '';
   for (let p of notes.split(/\n{2,}/)) {
@@ -7413,19 +7419,14 @@ async function makeEsquema(subjId, agentId, prev, signal, onProg, matOv, ask, fo
   const ins = agentInstr(agentId) + skillsBlock({ kind: 'esquema' }), ag = agentOf(agentId), sp = studyPref(s);
   const head = (ins ? 'Forma de trabajar del agente ' + (ag ? ag.name : '') + ' (síguela): ' + ins + '\n' : '') + memBlock(agentId, subjId) + 'Asignatura: ' + s.name + (sp ? '\nForma de estudio del estudiante (adapta el enfoque, sin inventar datos): ' + sp : '') + (ask ? '\nINSTRUCCIONES EXACTAS DEL ESTUDIANTE (máxima prioridad, cúmplelas al pie de la letra; mantén el formato JSON pedido): ' + ask : '') + '\n\n';
   const chunks = esqChunks(notes), paneles = []; let tipo = ESQ_TYPES[forceTipo] ? forceTipo : '', motivo = '';
-  for (let i = 0; i < chunks.length; i++) {
-    if (onProg) onProg(chunks.length > 1 ? 'Creando el esquema… parte ' + (i + 1) + ' de ' + chunks.length : 'Creando el esquema visual…');
+  let hechas = 0;
+  const unaParte = async (i) => {
     let panel = null;
     for (let tr = 0; tr < 2 && !panel; tr++) {
       try {
         const pr = esqPrompt({ head, tipo, det: det || 'equilibrado', i, n: chunks.length, prev: i === 0 ? prev : '', chunk: chunks[i] });
-        let o;
-        try { o = await sample.json(pr, { modelTier: TIER.esquema, signal, cache: false }); if (!o || (typeof o === 'object' && !Array.isArray(o) && !o.nodos && !o.pasos)) throw { code: 'invalid_json' }; }
-        catch (e1) {
-          if (e1 && e1.code && e1.code !== 'invalid_json') throw e1;
-          const r = await sample(pr, { modelTier: TIER.esquema, signal, cache: false }), t = String((r && r.text) || ''), a = t.indexOf('{'), b = t.lastIndexOf('}');
-          o = esqRepair(t); if (!o) throw { code: 'invalid_json' };
-        }
+        const r = await sample(pr, { modelTier: TIER.esquema, signal, cache: false }), o = esqRepair(String((r && r.text) || ''));
+        if (!o) throw { code: 'invalid_json' };
         const obj = Array.isArray(o) ? o[0] : o;
         if (!obj || typeof obj !== 'object') throw { code: 'invalid_json' };
         const tp = tipo || (ESQ_TYPES[obj.tipo] ? obj.tipo : 'llaves');
@@ -7434,8 +7435,12 @@ async function makeEsquema(subjId, agentId, prev, signal, onProg, matOv, ask, fo
       } catch (e) { if (tr === 1 || !e || e.code !== 'invalid_json') throw e; }
     }
     if (!panel.titulo) panel.titulo = chunks.length > 1 ? 'Parte ' + (i + 1) : s.name;
-    paneles.push(panel);
-  }
+    hechas++; if (onProg && chunks.length > 1) onProg('Creando el esquema… ' + hechas + ' de ' + chunks.length + ' partes');
+    return panel;
+  };
+  if (onProg) onProg(chunks.length > 1 ? 'Creando el esquema… (1.ª parte)' : 'Creando el esquema visual…');
+  paneles.push(await unaParte(0));
+  if (chunks.length > 1) { const rest = await faPool(chunks.length - 1, 4, (k) => unaParte(k + 1)); rest.forEach((p) => paneles.push(p)); }
   const visual = { tipo, motivo, paneles };
   return { visual, text: esqText(visual), updatedAt: Date.now() };
 }
@@ -9934,32 +9939,80 @@ function detRender() {
 
 /* ---------- Música para estudiar ---------- */
 const MU_TRACKS = [
+  { id: 'piano', name: 'Piano suave', desc: 'Notas tranquilas con ambiente · estudio y lectura', gen: 'piano', len: 0 },
+  { id: 'ambiente', name: 'Ambiente sereno', desc: 'Pads suaves y envolventes · concentración', gen: 'pad', len: 0 },
   { id: 'marron', name: 'Ruido marrón', desc: 'Grave y envolvente · foco largo', noise: 'brown', len: 0 },
   { id: 'rosa', name: 'Ruido rosa', desc: 'Equilibrado y suave · lectura', noise: 'pink', len: 0 },
   { id: 'blanco', name: 'Ruido blanco', desc: 'Agudo y constante · tapa el ruido', noise: 'white', len: 0 },
   { id: 'alfa', name: 'Ondas alfa con lluvia', desc: 'Binaural a 10 Hz con lluvia suave. Mejor con auriculares estéreo.', src: '/_blob/bffa62fefe83dc3f0b594a82ce65032d', len: 600, credit: 'PureBinaural (Pixabay, Content License)' },
   { id: 'clasica', name: 'Música clásica', desc: 'Gymnopédie n.º 1 (Satie) y Clair de lune (Debussy).', src: '/_blob/179d4b84d5624501a30b9af0fd2f4c05', len: 488, credit: 'Satie: Robin Alciatore (dominio público, Musopen) · Debussy: Laurens Goedhart (CC BY 3.0)' }
 ];
+function muWav(out, sr, target) {
+  const L = out.length; let ss = 0, pk = 0;
+  for (let i = 0; i < L; i++) { ss += out[i] * out[i]; }
+  const rms = Math.sqrt(ss / L) || 1, g = (target || 0.1) / rms;
+  const buf = new ArrayBuffer(44 + L * 2), dv = new DataView(buf), ws = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
+  ws(0, 'RIFF'); dv.setUint32(4, 36 + L * 2, true); ws(8, 'WAVEfmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); ws(36, 'data'); dv.setUint32(40, L * 2, true);
+  for (let i = 0; i < L; i++) dv.setInt16(44 + i * 2, Math.tanh(out[i] * g * 1.1) * 0.85 * 32767, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
 const muNoiseCache = {};
 function muNoiseUrl(kind) {
   if (muNoiseCache[kind]) return muNoiseCache[kind];
-  const sr = 22050, N = sr * 24, F = sr * 2, raw = new Float32Array(N); let last = 0, b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+  const sr = 32000, N = sr * 24, F = sr * 2, raw = new Float32Array(N); let last = 0, b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0, lp = 0, lp2 = 0;
   for (let i = 0; i < N; i++) {
     const w = Math.random() * 2 - 1; let v;
     if (kind === 'brown') { last = (last + 0.02 * w) / 1.02; v = last * 3.5; }
-    else if (kind === 'pink') { b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852; b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898; v = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926; }
-    else v = w * 0.5;
+    else if (kind === 'pink') { b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852; b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898; v = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926; lp += 0.6 * (v - lp); v = lp; }
+    else { lp += 0.35 * (w - lp); lp2 += 0.35 * (lp - lp2); v = lp2; }
     raw[i] = v;
   }
-  const L = N - F, out = new Float32Array(L); let pk = 0;
-  for (let i = 0; i < L; i++) { out[i] = i < F ? raw[i] * (i / F) + raw[L + i] * (1 - i / F) : raw[i]; pk = Math.max(pk, Math.abs(out[i])); }
-  const g = pk ? 0.55 / pk : 1, buf = new ArrayBuffer(44 + L * 2), dv = new DataView(buf), ws = (o, t) => { for (let i = 0; i < t.length; i++) dv.setUint8(o + i, t.charCodeAt(i)); };
-  ws(0, 'RIFF'); dv.setUint32(4, 36 + L * 2, true); ws(8, 'WAVEfmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, sr, true); dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); ws(36, 'data'); dv.setUint32(40, L * 2, true);
-  for (let i = 0; i < L; i++) dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, out[i] * g)) * 32767, true);
-  return (muNoiseCache[kind] = URL.createObjectURL(new Blob([buf], { type: 'audio/wav' })));
+  const L = N - F, out = new Float32Array(L);
+  for (let i = 0; i < L; i++) out[i] = i < F ? raw[i] * (i / F) + raw[L + i] * (1 - i / F) : raw[i];
+  return (muNoiseCache[kind] = muWav(out, sr, 0.08));
 }
+/* Música generada: pads suaves + piano sencillo con reverb, en bucle sin cortes */
+const muGenCache = {};
+function muGenUrl(kind) {
+  if (muGenCache[kind]) return muGenCache[kind];
+  const sr = 22050, BAR = 8, NB = 8, LEN = BAR * NB * sr, TAIL = 6 * sr, TOT = LEN + TAIL, buf = new Float32Array(TOT);
+  const f = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const CH = [[48, 52, 55, 59], [45, 48, 52, 55], [41, 45, 48, 52], [43, 47, 50, 53]];
+  const PENT = [72, 74, 76, 79, 81, 84, 79, 76];
+  let seed = kind === 'piano' ? 7 : 11; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const note = (t0, m, dur, amp, pad) => {
+    const fr = f(m), n0 = Math.floor(t0 * sr), n = Math.floor(dur * sr), w = 2 * Math.PI * fr / sr, det = 1.003;
+    for (let i = 0; i < n && n0 + i < TOT; i++) {
+      const t = i / sr; let e;
+      if (pad) { const x = i / n; e = Math.sin(Math.PI * x); e = e * e; }
+      else e = Math.min(1, t / 0.008) * Math.exp(-t * 1.7);
+      const ph = w * i;
+      let s = Math.sin(ph) + (pad ? 0.35 * Math.sin(ph * det * 2 + 1) + 0.15 * Math.sin(ph * 0.5 * det) : 0.32 * Math.sin(ph * 2) * Math.exp(-t * 1.2) + 0.1 * Math.sin(ph * 3) * Math.exp(-t * 2.5));
+      buf[n0 + i] += s * e * amp;
+    }
+  };
+  for (let b = 0; b < NB; b++) {
+    const ch = CH[b % 4], t0 = b * BAR;
+    ch.forEach((m, k) => note(t0 - 0.5 + k * 0.15, m, BAR + 1, kind === 'piano' ? 0.07 : 0.13, true));
+    note(t0 - 0.5, ch[0] - 12, BAR + 1, kind === 'piano' ? 0.08 : 0.14, true);
+    if (kind === 'piano') {
+      let tt = t0 + 0.0, k = 0;
+      while (tt < t0 + BAR - 1.5) { if (rnd() < 0.72) note(tt, PENT[(k + Math.floor(rnd() * 5)) % PENT.length], 4, 0.16, false); if (rnd() < 0.3) note(tt, ch[Math.floor(rnd() * 4)] + 12, 4, 0.08, false); tt += rnd() < 0.5 ? 1 : 2; k++; }
+    }
+  }
+  const comb = (x, d, g, damp) => { const y = new Float32Array(x.length), bf = new Float32Array(d); let p = 0, lp = 0; for (let i = 0; i < x.length; i++) { const o = bf[p]; lp = o * (1 - damp) + lp * damp; y[i] = o; bf[p] = x[i] + lp * g; if (++p >= d) p = 0; } return y; };
+  const ap = (x, d, g) => { const y = new Float32Array(x.length), bf = new Float32Array(d); let p = 0; for (let i = 0; i < x.length; i++) { const o = bf[p], v = x[i] + o * g; y[i] = o - v * g; bf[p] = v; if (++p >= d) p = 0; } return y; };
+  const c1 = comb(buf, 1557, 0.84, 0.35), c2 = comb(buf, 1617, 0.83, 0.35), c3 = comb(buf, 1491, 0.85, 0.35), c4 = comb(buf, 1422, 0.82, 0.35);
+  let wet = new Float32Array(TOT); for (let i = 0; i < TOT; i++) wet[i] = (c1[i] + c2[i] + c3[i] + c4[i]) * 0.25;
+  wet = ap(ap(wet, 225, 0.5), 556, 0.5);
+  const out = new Float32Array(LEN); let lp = 0;
+  for (let i = 0; i < TOT; i++) { const v = buf[i] * 0.7 + wet[i] * 0.9; lp += 0.35 * (v - lp); out[i % LEN] += lp; }
+  return (muGenCache[kind] = muWav(out, sr, 0.1));
+}
+let muFadeT = null;
+function muFade(to, ms, done) { clearInterval(muFadeT); const from = stAud.volume, t0 = performance.now(); muFadeT = setInterval(() => { const k = Math.min(1, (performance.now() - t0) / ms); stAud.volume = Math.max(0, Math.min(1, from + (to - from) * k)); if (k >= 1) { clearInterval(muFadeT); muFadeT = null; if (done) done(); } }, 40); }
 const MU_KEY = 'fa_music_v1';
-state.mu = { track: null, vol: 0.6, sync: true, err: '', playing: false };
+state.mu = { track: null, vol: 0.5, sync: true, err: '', playing: false };
 const stAud = new Audio(); stAud.loop = true; stAud.preload = 'none';
 try { const sv = JSON.parse(localStorage.getItem(MU_KEY) || 'null'); if (sv) { if (typeof sv.vol === 'number') state.mu.vol = Math.min(1, Math.max(0, sv.vol)); if (typeof sv.sync === 'boolean') state.mu.sync = sv.sync; if (MU_TRACKS.some((t) => t.id === sv.track)) state.mu.track = sv.track; } } catch (e) {}
 stAud.volume = state.mu.vol;
@@ -9968,12 +10021,12 @@ function muTrack() { return MU_TRACKS.find((t) => t.id === state.mu.track) || nu
 function muPlay() {
   const t = muTrack(); if (!t) return;
   state.mu.err = '';
-  if (!stAud.src || stAud.dataset.tid !== t.id) { stAud.src = t.noise ? muNoiseUrl(t.noise) : t.src; stAud.dataset.tid = t.id; }
-  stAud.volume = state.mu.vol;
-  const p = stAud.play();
+  if (!stAud.src || stAud.dataset.tid !== t.id) { stAud.src = t.noise ? muNoiseUrl(t.noise) : t.gen ? muGenUrl(t.gen) : t.src; stAud.dataset.tid = t.id; }
+  clearInterval(muFadeT); stAud.volume = 0;
+  const p = stAud.play(); muFade(state.mu.vol, 1500);
   if (p && p.catch) p.catch(() => { state.mu.err = 'No se pudo reproducir el audio en este dispositivo.'; muPaint(); });
 }
-function muPause() { try { stAud.pause(); } catch (e) {} }
+function muPause() { try { if (stAud.paused) return; muFade(0, 500, () => { try { stAud.pause(); } catch (e) {} stAud.volume = state.mu.vol; }); } catch (e) { try { stAud.pause(); } catch (e2) {} } }
 function muPick(id) {
   const was = !stAud.paused;
   state.mu.track = id; muSave();
@@ -20254,13 +20307,16 @@ window.ntHubOpen = function (tab) {
     const det = DETAIL[o.det] || DETAIL.equilibrado, extra = o.extra ? '\nInstrucciones del estudiante: ' + o.extra : '';
     const chunks = o.material ? (typeof esqChunks === 'function' ? esqChunks(o.material) : [o.material.slice(0, 20000)]) : [''];
     const root = { t: o.central || o.title || 'Mapa mental', ch: [] };
-    for (let i = 0; i < chunks.length; i++) {
+    let fin = 0;
+    const doChunk = async (i) => {
       if (signal && signal.aborted) throw { code: 'cancelled' };
-      if (onProg) onProg(chunks.length > 1 ? 'Creando el mapa… parte ' + (i + 1) + ' de ' + chunks.length : 'Creando el mapa mental…');
+      if (onProg) onProg(chunks.length > 1 ? 'Creando el mapa… ' + fin + ' de ' + chunks.length + ' partes' : 'Creando el mapa mental…');
       const pr = sysMM + '\n\nCrea un mapa mental' + (o.material ? ' a partir del MATERIAL. Sé fiel: no añadas datos que no estén.' : ' sobre el tema indicado.') + '\nNIVEL DE DETALLE: ' + det[0] + '.\nDevuelve {"t":"' + root.t.replace(/"/g, '') + '","ch":[ramas principales]}.' + (chunks.length > 1 ? '\nEl material es largo: este es el fragmento ' + (i + 1) + ' de ' + chunks.length + '. Crea solo las ramas de ESTE fragmento, sin repetir otras.' : '') + extra + (o.topic ? '\nTema: ' + o.topic : '') + (chunks[i] ? '\n\nMATERIAL:\n' + chunks[i] : '');
       const r = await aiTry(async () => { const x = await sample.json(pr, { modelTier: 'default', signal, cache: false }); const t = Array.isArray(x) ? { ch: x } : x; if (!t || !(t.ch || t.children || t.t)) throw { code: 'invalid_json' }; return t; }, { label: 'mapa', signal, tries: 3 });
-      const br = r.ch || r.children || []; br.forEach((b) => { const dup = root.ch.find((q) => String(q.t).toLowerCase() === String(b.t || '').toLowerCase()); if (dup) { dup.ch = (dup.ch || []).concat(b.ch || b.children || []); } else root.ch.push(b); });
-    }
+      fin++; return r.ch || r.children || [];
+    };
+    const partes = chunks.length > 1 ? await faPool(chunks.length, 4, doChunk) : [await doChunk(0)];
+    partes.forEach((br) => { br.forEach((b) => { const dup = root.ch.find((q) => String(q.t).toLowerCase() === String(b.t || '').toLowerCase()); if (dup) { dup.ch = (dup.ch || []).concat(b.ch || b.children || []); } else root.ch.push(b); }); });
     if (!root.ch.length) throw { code: 'invalid_json' };
     return norm(root, 0, { n: 900 });
   }
@@ -22912,6 +22968,157 @@ tkClash = function (day, start, end, skipId) {
     const b = [...top.querySelectorAll('button')].find((x) => /^(×|✕|cerrar|cancelar|close)$/i.test((x.textContent || '').trim()) || /^(cerrar|cancelar)$/i.test(x.getAttribute('aria-label') || ''));
     const w = top; top = null; if (b && !b.disabled) { try { b.click(); } catch (er) {} }
   });
+})();
+</script>
+
+<style id="fa-chat2">
+/* ===== Texto de las respuestas de IA: título, subtítulos y listas ===== */
+.md { --mdc: var(--accent, #2f5ccc); line-height: 1.62; gap: 12px; }
+.md h2.md-h1 { font-size: 21px; line-height: 1.22; font-weight: 800; letter-spacing: -.015em; margin: 4px 0 2px; padding-bottom: 9px; position: relative; color: var(--fg, inherit); }
+.md h2.md-h1::after { content: ""; position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--mdc), transparent 70%); }
+.md h3 { display: flex; align-items: center; gap: 9px; font-size: 17px; line-height: 1.28; font-weight: 800; margin: 16px 0 0; color: var(--mdc); letter-spacing: -.01em; }
+.md h3::before { content: ""; flex: none; width: 4px; height: 1.05em; border-radius: 3px; background: currentColor; opacity: .9; }
+.md h4 { font-size: 13px; line-height: 1.3; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; margin: 12px 0 -2px; color: color-mix(in srgb, var(--mdc) 70%, var(--fg, #888)); }
+.md h2.md-h1:first-child, .md h3:first-child, .md h4:first-child { margin-top: 0; }
+.md > p { margin: 0; text-wrap: pretty; }
+.md strong, .md b { font-weight: 700; }
+/* viñetas */
+.md ul { list-style: none; padding-left: 2px; margin: 0; gap: 7px; }
+.md ul > li { position: relative; padding-left: 20px; }
+.md ul > li::before { content: ""; position: absolute; left: 4px; top: .68em; width: 7px; height: 7px; border-radius: 50%; background: var(--mdc); }
+.md ul > li.lv1 { margin-left: 18px; list-style: none; } .md ul > li.lv1::before { background: none; border: 2px solid var(--mdc); width: 5px; height: 5px; }
+.md ul > li.lv2, .md ul > li.lv3 { margin-left: 36px; list-style: none; font-size: .96em; } .md ul > li.lv2::before, .md ul > li.lv3::before { border-radius: 2px; width: 6px; height: 6px; opacity: .7; }
+/* listas numeradas: círculos con el número */
+.md ol { list-style: none; counter-reset: mdn var(--s0, 0); padding-left: 0; margin: 0; gap: 10px; }
+.md ol > li { position: relative; counter-increment: mdn; padding-left: 38px; min-height: 28px; }
+.md ol > li::before { content: counter(mdn); position: absolute; left: 0; top: -1px; width: 27px; height: 27px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 800; color: var(--accent-fg, #fff); background: var(--mdc); box-shadow: 0 3px 8px color-mix(in srgb, var(--mdc) 32%, transparent); }
+.md ol > li[class*="lv"] { counter-increment: none; margin-left: 38px; padding-left: 18px; min-height: 0; font-size: .96em; }
+.md ol > li[class*="lv"]::before { content: ""; width: 6px; height: 6px; top: .68em; left: 3px; box-shadow: none; opacity: .75; }
+.md li > p { margin: 0; }
+.md blockquote { padding: 10px 14px; border-radius: 0 12px 12px 0; border-left-width: 4px; }
+.md pre { border-radius: 14px; }
+.md hr { margin: 8px 0; }
+.nc-bt .md { --mdc: hsl(var(--oc) 90% 70%); }
+.nc-bt .md h2.md-h1 { color: #fff; } .nc-bt .md h3 { border-bottom: 0; padding-bottom: 0; margin-top: 18px; }
+.nc-bt .md ol > li::before { color: #0b0e15; }
+.nc-bt .md ul > li::before { background: var(--mdc); } .nc-bt .md ul > li.lv1::before { background: none; }
+.nc-bt .md li::marker { content: none; } .nc-bt .md ul, .nc-bt .md ol { padding-left: 0; }
+.cw-a .md ol > li::before, .wb-ai-a .md ol > li::before { width: 22px; height: 22px; font-size: 11.5px; } .cw-a .md ol > li, .wb-ai-a .md ol > li { padding-left: 31px; }
+/* ===== Chat: entrada fluida, escribiendo, controles ===== */
+@keyframes faMsgIn { from { opacity: 0; transform: translateY(10px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes faMsgInU { from { opacity: 0; transform: translateX(14px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes faOvIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes faDot { 0%, 70%, 100% { transform: translateY(0); opacity: .35; } 35% { transform: translateY(-5px); opacity: 1; } }
+@keyframes faChipIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.nc-ov { animation: faOvIn .32s cubic-bezier(.2, .8, .2, 1); }
+.nc-a.nc-in, .bub.a.bub-in { animation: faMsgIn .42s cubic-bezier(.2, .8, .2, 1) both; transform-origin: left top; }
+.nc-u.nc-in, .bub.u.bub-in { animation: faMsgInU .34s cubic-bezier(.2, .8, .2, 1) both; transform-origin: right bottom; }
+.nc-chip { animation: faChipIn .4s cubic-bezier(.2, .8, .2, 1) both; transition: background .2s, border-color .2s, transform .15s; }
+.nc-chip:nth-child(2) { animation-delay: .05s; } .nc-chip:nth-child(3) { animation-delay: .1s; } .nc-chip:nth-child(4) { animation-delay: .15s; } .nc-chip:nth-child(5) { animation-delay: .2s; }
+.nc-chip:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.28); } .nc-chip:active { transform: scale(.96); }
+.nc-tile { transition: transform .18s cubic-bezier(.2, .8, .2, 1), background .2s, border-color .2s; } .nc-tile:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.2); transform: translateY(-2px); } .nc-tile:active { transform: scale(.97); }
+.nc-send { transition: transform .15s, opacity .2s, box-shadow .2s; box-shadow: 0 6px 16px hsl(var(--oc) 75% 40% / .45); } .nc-send:hover:not(:disabled) { transform: scale(1.06); } .nc-send:active:not(:disabled) { transform: scale(.92); }
+.nc-bar textarea { transition: border-color .2s, background .2s, box-shadow .2s, height .12s; } .nc-bar textarea:focus { box-shadow: 0 0 0 3px hsl(var(--oc) 80% 60% / .22); background: rgba(255,255,255,.1); }
+.nc-scroll { scroll-behavior: auto; overscroll-behavior: contain; }
+.nc-bt { transition: box-shadow .3s; }
+.nc-typing { display: inline-flex; gap: 5px; align-items: center; height: 22px; padding: 0 2px; }
+.nc-typing i { width: 7px; height: 7px; border-radius: 50%; background: hsl(var(--oc, 220) 90% 70%); animation: faDot 1.15s infinite ease-in-out; }
+.nc-typing i:nth-child(2) { animation-delay: .15s; } .nc-typing i:nth-child(3) { animation-delay: .3s; }
+.bub { transition: box-shadow .2s; } .bub.a .nc-typing i { background: var(--accent); }
+.chat { scroll-behavior: smooth; overscroll-behavior: contain; }
+@media (prefers-reduced-motion: reduce) { .nc-ov, .nc-a.nc-in, .nc-u.nc-in, .bub-in, .nc-chip { animation: none !important; } .nc-typing i { animation-duration: 2.4s; } .chat { scroll-behavior: auto; } }
+
+/* ===== Caja de texto premium ===== */
+.nc-bar { position: relative; width: calc(100% - 28px) !important; max-width: 640px; margin: 6px auto calc(12px + env(safe-area-inset-bottom, 0px)) !important; padding: 7px 7px 7px 8px !important; gap: 4px !important; align-items: flex-end !important; border: 1px solid transparent !important; border-radius: 30px; background: linear-gradient(160deg, rgba(30,34,52,.82), rgba(16,19,31,.86)) padding-box, linear-gradient(135deg, rgba(255,255,255,.26), rgba(255,255,255,.05) 42%, hsl(var(--oc) 75% 58% / .42)) border-box; -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); box-shadow: 0 22px 44px -14px rgba(0,0,0,.65), 0 1px 0 rgba(255,255,255,.07) inset; transition: box-shadow .35s cubic-bezier(.2,.8,.2,1), transform .35s cubic-bezier(.2,.8,.2,1); }
+.nc-bar:focus-within { background: linear-gradient(160deg, rgba(34,38,60,.88), rgba(18,21,36,.9)) padding-box, linear-gradient(135deg, hsl(var(--oc) 85% 72% / .85), hsl(var(--oc) 70% 52% / .35) 55%, rgba(255,255,255,.18)) border-box; box-shadow: 0 22px 48px -14px rgba(0,0,0,.7), 0 0 0 4px hsl(var(--oc) 80% 60% / .13), 0 0 42px -8px hsl(var(--oc) 85% 58% / .55); }
+.nc-bar textarea { flex: 1; min-width: 0; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; padding: 11px 6px !important; font-size: 16px !important; letter-spacing: .005em; caret-color: hsl(var(--oc) 90% 72%); }
+.nc-bar textarea::placeholder { color: rgba(238,241,250,.4); letter-spacing: .01em; }
+.nc-bar textarea:focus, .nc-bar textarea:focus-visible { box-shadow: none !important; background: transparent !important; outline: none !important; }
+.nc-bar .nc-att { border: 0 !important; width: 40px !important; height: 40px !important; background: rgba(255,255,255,.06) !important; color: #b9c3de; transition: background .2s, color .2s, transform .15s; }
+.nc-bar .nc-att:hover:not(:disabled) { background: hsl(var(--oc) 70% 55% / .22) !important; color: #fff; transform: translateY(-1px); }
+.nc-bar .nc-att:active:not(:disabled) { transform: scale(.92); }
+.nc-bar .nc-send { width: 42px !important; height: 42px !important; border: 0; background: linear-gradient(145deg, hsl(var(--oc) 88% 66%), hsl(var(--oc) 78% 46%)) !important; box-shadow: 0 8px 20px -4px hsl(var(--oc) 85% 45% / .65), 0 1px 0 rgba(255,255,255,.35) inset !important; transition: transform .25s cubic-bezier(.2,.8,.2,1), opacity .25s, box-shadow .25s, filter .25s; }
+.nc-bar:not(.has-text) .nc-send:not(:disabled) { opacity: .55; transform: scale(.9); filter: saturate(.6); box-shadow: none !important; }
+.nc-bar.has-text .nc-send:not(:disabled):hover { transform: scale(1.08) rotate(-6deg); } .nc-bar.has-text .nc-send:not(:disabled):active { transform: scale(.9); }
+.nc-bar .nc-send svg { width: 20px; height: 20px; transition: transform .25s; } .nc-bar.has-text .nc-send:hover svg { transform: translateX(1px); }
+.nc-scroll { -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 26px), transparent); mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 26px), transparent); }
+.chat-form { padding: 6px 6px 6px 14px; border: 1px solid var(--line); border-radius: 26px; background: var(--surface); box-shadow: 0 10px 26px -14px rgba(20,30,60,.35); transition: box-shadow .25s, border-color .25s; align-items: flex-end; }
+.chat-form:focus-within { border-color: var(--accent); box-shadow: 0 10px 28px -12px color-mix(in srgb, var(--accent) 45%, transparent), 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
+.chat-form textarea { border: 0 !important; background: transparent !important; box-shadow: none !important; outline: none !important; padding: 10px 2px !important; min-width: 0; }
+.chat-form .btn { border-radius: 20px; }
+
+/* ===== Burbuja de respuesta de la IA premium ===== */
+.nc-a { gap: 10px; }
+.nc-av { filter: drop-shadow(0 4px 12px hsl(var(--oc) 85% 55% / .5)); }
+.nc-bt { position: relative; isolation: isolate; padding: 18px 18px 17px !important; font-size: 15.5px; line-height: 1.66; color: #e8ecf8;
+  border: 1px solid transparent !important; border-left-width: 1px !important; border-radius: 8px 24px 24px 24px !important;
+  background: linear-gradient(165deg, rgba(34,38,58,.88), rgba(17,20,33,.92)) padding-box, linear-gradient(150deg, hsl(var(--oc) 80% 68% / .55), rgba(255,255,255,.07) 38%, rgba(255,255,255,.04) 70%, hsl(var(--oc) 70% 55% / .22)) border-box !important;
+  box-shadow: 0 18px 38px -18px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.06) inset, 0 0 46px -22px hsl(var(--oc) 85% 55% / .55) !important; overflow: hidden; }
+.nc-bt::before { content: ""; position: absolute; z-index: -1; left: -20%; top: -40%; width: 70%; height: 90%; background: radial-gradient(closest-side, hsl(var(--oc) 85% 60% / .16), transparent); pointer-events: none; }
+.nc-bt::after { content: ""; position: absolute; left: 18px; right: 18px; top: 0; height: 1px; background: linear-gradient(90deg, transparent, hsl(var(--oc) 90% 78% / .75), transparent); opacity: .8; }
+.nc-bt .md { font-size: 15.5px; color: #e8ecf8; }
+.nc-bt .md > p { color: #dfe4f3; }
+.nc-bt .md strong, .nc-bt .md b { color: #fff; }
+.nc-bt .md blockquote { background: linear-gradient(90deg, hsl(var(--oc) 70% 50% / .14), rgba(255,255,255,.03)); border-left: 3px solid hsl(var(--oc) 85% 66%); border-radius: 0 14px 14px 0; }
+.nc-bt .md code { background: hsl(var(--oc) 60% 60% / .16); color: #f1f4ff; }
+.nc-bt .md pre { background: rgba(5,7,14,.55); border: 1px solid rgba(255,255,255,.07); }
+.nc-bt .md .md-tw { border-color: rgba(255,255,255,.12); border-radius: 14px; background: rgba(255,255,255,.03); }
+.nc-u { padding: 11px 16px !important; border-radius: 22px 22px 6px 22px !important; font-size: 15.5px; line-height: 1.5; background: linear-gradient(145deg, hsl(var(--oc) 82% 60%), hsl(var(--oc) 72% 44%)) !important; box-shadow: 0 14px 26px -12px hsl(var(--oc) 85% 40% / .75), 0 1px 0 rgba(255,255,255,.28) inset; }
+.nc-msgs { gap: 18px; }
+/* chats de agentes (tema claro/oscuro de la app) */
+.bub { padding: 13px 16px; line-height: 1.6; }
+.bub.a { border-radius: 6px 22px 22px 22px; border: 1px solid var(--line); background: linear-gradient(165deg, var(--surface), color-mix(in srgb, var(--accent) 5%, var(--surface))); box-shadow: 0 14px 30px -18px color-mix(in srgb, var(--accent) 45%, rgba(20,30,60,.5)), 0 1px 0 rgba(255,255,255,.5) inset; position: relative; }
+.bub.a::before { content: ""; position: absolute; left: 16px; right: 16px; top: 0; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--accent), transparent 70%); opacity: .75; }
+.bub.u { border-radius: 22px 22px 6px 22px; background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent) 72%, #000)); box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--accent) 70%, transparent), 0 1px 0 rgba(255,255,255,.25) inset; }
+</style>
+<script id="fa-chat2-js">
+(function () {
+  const seen = {};
+  /* estado de «escribiendo» como tres puntos que rebotan */
+  const dots = () => { const s = document.createElement('span'); s.className = 'nc-typing'; s.setAttribute('role', 'status'); s.setAttribute('aria-label', 'Escribiendo'); s.innerHTML = '<i></i><i></i><i></i>'; return s; };
+  const nearBottom = (sc) => sc.scrollHeight - sc.scrollTop - sc.clientHeight < 140;
+  function post(prevTop, wasBottom) {
+    try {
+      const sid = state.nc && state.nc.sid, box = document.getElementById('ncMsgs'), sc = document.getElementById('ncScroll'); if (!box || !sc) return;
+      const kids = Array.from(box.children), n = kids.length; let s = seen[sid];
+      if (s === undefined) s = Math.max(0, n - 2); if (n < s) s = 0;
+      kids.forEach((k, i) => { if (i >= s) k.classList.add('nc-in'); });
+      kids.forEach((k) => { const d = k.querySelector && k.querySelector('.nc-dots'); if (d) d.replaceWith(dots()); });
+      const grew = n > s; seen[sid] = n;
+      if (grew) { sc.scrollTo({ top: sc.scrollHeight, behavior: 'smooth' }); }
+      else if (!wasBottom && prevTop != null) sc.scrollTop = prevTop;
+    } catch (e) {}
+  }
+  const rn = window.renderNucleo;
+  if (typeof rn === 'function') {
+    window.renderNucleo = renderNucleo = function () {
+      const sc0 = document.getElementById('ncScroll'), prev = sc0 ? sc0.scrollTop : null, wb = sc0 ? nearBottom(sc0) : true;
+      const r = rn.apply(this, arguments); post(prev, wb);
+      try { const t = document.getElementById('ncIn'); if (t && !t.__fa) { t.__fa = 1; const bar = t.closest('.nc-bar'), fit = () => { t.style.height = 'auto'; t.style.height = Math.min(140, t.scrollHeight) + 'px'; if (bar) bar.classList.toggle('has-text', !!t.value.trim()); }; t.addEventListener('input', fit); fit(); } } catch (e) {}
+      return r;
+    };
+  }
+  /* streaming: pinta como mucho una vez por fotograma y solo baja si el usuario ya estaba abajo */
+  if (typeof window.ncPaintLast === 'function') {
+    let pend = 0;
+    window.ncPaintLast = ncPaintLast = function () {
+      if (pend) return; pend = requestAnimationFrame(() => {
+        pend = 0;
+        try {
+          const el = document.querySelector('#ncMsgs .nc-a:last-child .nc-bt'), msgs = state.nc.msgs[state.nc.sid] || [], t = (msgs[msgs.length - 1] || {}).t, sc = document.getElementById('ncScroll');
+          if (!el) return; const stick = sc ? nearBottom(sc) : false;
+          if (t) el.replaceChildren(md(typeof ncSplit === 'function' ? ncSplit(t).t : t)); else if (!el.querySelector('.nc-typing')) el.replaceChildren(dots());
+          if (sc && stick) sc.scrollTop = sc.scrollHeight;
+        } catch (e) {}
+      });
+    };
+  }
+  /* chats de agentes (.chat con .bub): anima solo los mensajes nuevos */
+  const obs = new MutationObserver((ms) => {
+    const seenC = new Set();
+    ms.forEach((m) => { const c = m.target; if (c && c.classList && c.classList.contains('chat') && !seenC.has(c)) { seenC.add(c); const k = Array.from(c.children).filter((x) => x.classList && x.classList.contains('bub')), p = c.__n === undefined ? Math.max(0, k.length - 1) : c.__n; if (k.length < p) { c.__n = k.length; return; } k.forEach((b, i) => { if (i >= p) b.classList.add('bub-in'); }); c.__n = k.length; if (k.length > p) { try { c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' }); } catch (e) {} } } });
+  });
+  obs.observe(document.body, { childList: true, subtree: true });
 })();
 </script>
 </body></html>
