@@ -8932,7 +8932,7 @@ function planRefreshAll() {
   try { if (state.view === 'asignatura') renderSubjPage(); } catch (e) {}
   try { detRender(); } catch (e) {}
 }
-async function stSavePlan(blocks) { await put('plan/current', { ...(state.plan || {}), blocks, updatedAt: Date.now() }); planRefreshAll(); }
+async function stSavePlan(blocks) { const keep = ((state.plan && state.plan.blocks) || []).filter((b) => b && !blkTimed(b) && !blocks.some((x) => x && x.id === b.id)); await put('plan/current', { ...(state.plan || {}), blocks: blocks.concat(keep), updatedAt: Date.now() }); planRefreshAll(); }
 function stCalMap(ym) {
   const m = {}, g = (d) => (m[d] || (m[d] = { b: [], e: [], t: [] }));
   stBlocks().forEach((b) => { if (b.day.startsWith(ym)) g(b.day).b.push(b); });
@@ -9830,7 +9830,7 @@ function matPick(sid, have, onDone) {
 }
 function openSessModal(id, preset) {
   closeSessModal(); preset = preset || {};
-  const all = stBlocks(), b0 = id ? all.find((x) => x.id === id) : null; if (id && !b0) return;
+  const all = ((state.plan && state.plan.blocks) || []).filter(Boolean), b0 = id ? all.find((x) => x.id === id) : null; if (id && !b0) return;
   const today = todayISO(), subs = sortedSubjects();
   const f = b0 ? { ...b0 } : { day: preset.day || today, start: '17:00', end: '18:00', subject: preset.subject || (subs[0] ? subs[0][1].name : 'General'), title: '', done: false, examId: preset.examId || '', taskId: preset.taskId || '' };
   if (!b0 && (preset.examId || preset.taskId)) { const e = preset.examId && state.exams[preset.examId], t = preset.taskId && state.tasks[preset.taskId], sj = state.subjects[(e || t || {}).subjectId]; if (sj) f.subject = sj.name; }
@@ -9838,6 +9838,10 @@ function openSessModal(id, preset) {
   const ti = h('input', { id: 'seTitle', type: 'text', maxlength: '80', placeholder: 'Qué vas a estudiar (tema, ejercicios…)', 'aria-label': 'Tema o descripción' }); ti.value = f.title || '';
   const da = h('input', { id: 'seDay', type: 'date', 'aria-label': 'Día' }); da.value = f.day;
   const t1 = h('input', { id: 'seStart', type: 'time', 'aria-label': 'Inicio' }); t1.value = f.start; const t2 = h('input', { id: 'seEnd', type: 'time', 'aria-label': 'Fin' }); t2.value = f.end;
+  const nh = h('input', { id: 'seNoHour', type: 'checkbox' }); nh.checked = !!(b0 && !blkTimed(b0)); if (!t1.value) { t1.value = '17:00'; t2.value = hhmm(toMin('17:00') + blkDur(f)); }
+  const DUR_L = [30, 45, 60, 90, 120, 150, 180], du = h('select', { id: 'seDur', 'aria-label': 'Duración' }, DUR_L.map((m) => h('option', { value: String(m), text: blkMinTxt(m) }))); du.value = String(DUR_L.includes(blkDur(f)) ? blkDur(f) : 60);
+  const rowT = h('div', { class: 'es-row' }, esField('Desde', t1), esField('Hasta', t2)), rowD = esField('Duración', du);
+  const hourSync = () => { rowT.style.display = nh.checked ? 'none' : ''; rowD.style.display = nh.checked ? '' : 'none'; }; nh.addEventListener('change', hourSync); hourSync();
   const exs = examList().filter((e) => e.date >= today || e.id === f.examId).filter((e) => state.subjects[e.subjectId]), tks = Object.entries(state.tasks || {}).filter(([tid, t]) => t && ((!t.done && t.due >= today) || tid === f.taskId));
   const link = h('select', { id: 'seLink', 'aria-label': 'Asociada a' }, h('option', { value: '', text: 'Sin examen ni trabajo' }), exs.map((e) => h('option', { value: 'e:' + e.id, text: 'Examen · ' + (e.title || 'Examen') + ' (' + state.subjects[e.subjectId].name + ')' })), tks.map(([tid, t]) => h('option', { value: 't:' + tid, text: 'Trabajo · ' + t.title })));
   link.value = f.examId && exs.some((e) => e.id === f.examId) ? 'e:' + f.examId : f.taskId && tks.some(([tid]) => tid === f.taskId) ? 't:' + f.taskId : '';
@@ -9850,24 +9854,25 @@ function openSessModal(id, preset) {
   }; sSel.addEventListener('change', () => { mats = new Set(); matPaint(); }); matPaint();
   const err = h('p', { class: 'mu-err', role: 'alert', hidden: true }); let armed = false;
   const save = async () => {
-    const day = da.value, s0 = t1.value, e0 = t2.value;
+    const day = da.value, noH = nh.checked, s0 = noH ? '' : t1.value, e0 = noH ? '' : t2.value;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) { err.textContent = 'Elige el día.'; err.hidden = false; return; }
-    if (!s0 || !e0 || toMin(e0) - toMin(s0) < 15) { err.textContent = 'La hora de fin debe ser al menos 15 minutos posterior al inicio.'; err.hidden = false; return; }
-    const cl = stBlocks().find((x) => x.id !== id && x.day === day && toMin(x.start) < toMin(e0) && toMin(x.end) > toMin(s0));
+    if (!noH && (!s0 || !e0 || toMin(e0) - toMin(s0) < 15)) { err.textContent = 'La hora de fin debe ser al menos 15 minutos posterior al inicio.'; err.hidden = false; return; }
+    const cl = noH ? null : stBlocks().find((x) => x.id !== id && x.day === day && toMin(x.start) < toMin(e0) && toMin(x.end) > toMin(s0));
     if (cl && !armed) { armed = true; err.textContent = 'Se solapa con «' + cl.title + '» (' + cl.start + '–' + cl.end + '). Pulsa Guardar otra vez para guardarla igualmente.'; err.hidden = false; return; }
     const lk = link.value, patch = { day, start: s0, end: e0, subject: sSel.value, title: ti.value.trim().slice(0, 80) || (lk.startsWith('e:') ? 'Estudio · ' + ((state.exams[lk.slice(2)] || {}).title || 'examen') : 'Estudio'), done: dn.checked, examId: lk.startsWith('e:') ? lk.slice(2) : '', taskId: lk.startsWith('t:') ? lk.slice(2) : '', note: nt.value.trim().slice(0, 1500), auto: false, mats: Array.from(mats) };
+    if (noH) { patch.noTime = true; patch.dur = Number(du.value) || 60; } else delete patch.noTime;
     if (!patch.mats.length) delete patch.mats; if (!patch.examId) delete patch.examId; if (!patch.taskId) delete patch.taskId; if (!patch.note) delete patch.note;
-    const all2 = stBlocks(); closeSessModal();
-    if (b0) { if (!!b0.done !== patch.done) { try { habBlockEv(b0, patch.done); } catch (e) {} } const nb = { ...b0, ...patch }; if (!patch.examId) delete nb.examId; if (!patch.taskId) delete nb.taskId; if (!patch.note) delete nb.note; await stSavePlan(all2.map((x) => x.id === id ? nb : x)); toast('Sesión actualizada.'); }
-    else { await stSavePlan(all2.concat({ id: uid(), kind: 'estudiar', cal: false, ...patch })); toast('Sesión añadida: ' + fmtDay(day) + ' ' + s0 + '–' + e0 + '.'); }
+    const all2 = ((state.plan && state.plan.blocks) || []).filter(Boolean); closeSessModal();
+    if (b0) { if (!!b0.done !== patch.done) { try { habBlockEv(b0, patch.done); } catch (e) {} } const nb = { ...b0, ...patch }; if (!noH) delete nb.noTime; if (!patch.examId) delete nb.examId; if (!patch.taskId) delete nb.taskId; if (!patch.note) delete nb.note; await stSaveAll(all2.map((x) => x.id === id ? nb : x)); toast('Sesión actualizada.'); }
+    else { await stSaveAll(all2.concat({ id: uid(), kind: 'estudiar', cal: false, ...patch })); toast('Sesión añadida: ' + fmtDay(day) + (noH ? ' (sin hora).' : ' ' + s0 + '–' + e0 + '.')); }
     if (state.stCal && day.slice(0, 7) === state.stCal.ym) { state.stCal.sel = day; stCalRender(); }
   };
-  const delBtn = b0 ? h('button', { class: 'btn danger', type: 'button', onclick: async (e) => { const bt = e.currentTarget; if (!bt.dataset.armed) { bt.dataset.armed = '1'; bt.textContent = 'Confirmar: borrar sesión'; return; } const prev = stBlocks(); closeSessModal(); await stSavePlan(prev.filter((x) => x.id !== id)); toast('Sesión borrada.', { label: 'Deshacer', fn: () => { stSavePlan(prev); } }); } }, 'Borrar sesión') : null;
+  const delBtn = b0 ? h('button', { class: 'btn danger', type: 'button', onclick: async (e) => { const bt = e.currentTarget; if (!bt.dataset.armed) { bt.dataset.armed = '1'; bt.textContent = 'Confirmar: borrar sesión'; return; } const prev = ((state.plan && state.plan.blocks) || []).filter(Boolean); closeSessModal(); await stSaveAll(prev.filter((x) => x.id !== id)); toast('Sesión borrada.', { label: 'Deshacer', fn: () => { stSaveAll(prev); } }); } }, 'Borrar sesión') : null;
   const dlg = h('div', { class: 'modal-bg', id: 'sesModal', style: 'z-index:70', onclick: (e) => { if (e.target.id === 'sesModal') closeSessModal(); } },
     h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'seH' },
       h('div', { class: 'sec-head' }, h('h2', { id: 'seH', text: b0 ? 'Editar sesión' : 'Nueva sesión de estudio' }), h('button', { class: 'btn sm', type: 'button', 'aria-label': 'Cerrar', onclick: closeSessModal, text: '×' })),
       h('form', { class: 'es-mform', onsubmit: (e) => { e.preventDefault(); save(); } },
-        esField('Asignatura', sSel), esField('Qué estudiar', ti), esField('Día', da), h('div', { class: 'es-row' }, esField('Desde', t1), esField('Hasta', t2)),
+        esField('Asignatura', sSel), esField('Qué estudiar', ti), esField('Día', da), h('label', { class: 'mu-sync' }, nh, h('span', { text: 'Sin hora: solo el día, y elijo la hora ese día' })), rowT, rowD,
         esField('Asociada a', link), h('div', { class: 'field' }, h('span', { class: 'lbl', text: 'Material (apuntes y recursos con IA)' }), matBox), esField('Notas', nt), h('label', { class: 'mu-sync' }, dn, h('span', { text: 'Ya la he hecho' })), err,
         h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'submit', text: b0 ? 'Guardar cambios' : 'Añadir sesión' }), h('button', { class: 'btn', type: 'button', onclick: closeSessModal, text: 'Cancelar' }), delBtn))));
   document.body.append(dlg); setTimeout(() => ti.focus(), 40);
@@ -10671,9 +10676,11 @@ function esPlanView(box) {
     h('button', { class: 'btn', type: 'button', disabled: es.coach || state.autoBusy, onclick: () => esPlan(true), text: (p.blocks || []).some((b) => b.auto) ? 'Reorganizar todo' : 'Organizar todo' }),
     h('button', { class: 'btn', type: 'button', disabled: !sample || es.coach || state.autoBusy, onclick: esCoach, text: 'Afinar con IA' }),
     h('button', { class: 'btn', type: 'button', disabled: !sample || es.coach || state.autoBusy, onclick: openPlanChange, text: 'Pedir cambios a la IA' }),
+    h('button', { class: 'btn', type: 'button', onclick: () => openSessModal(null, { day: todayISO() }), text: 'Añadir sesión' }),
     state.autoBusy || es.coach ? h('span', { class: 'thinking', text: es.coach ? 'Claude está afinando…' : 'Organizando…' }) : null);
+  const aiBar = blkAiBar();
   const auto = h('label', { class: 'mu-sync' }, h('input', { type: 'checkbox', checked: c.auto ? true : false, onchange: (e) => { esSaveCond({ auto: e.target.checked }); renderAgents(); } }), h('span', { text: 'Reorganizar solo cuando cambie algo (examen, condiciones) o no llegue a un bloque, sin que tenga que pulsar nada.' }));
-  appendKids(box, cards, tb, auto);
+  appendKids(box, cards, tb, aiBar, auto);
   if (!state.cond) box.append(h('p', { class: 'small', text: 'Estoy usando condiciones por defecto (2 h al día, bloques de 50 min). Ajusta «Mis condiciones» para que sea realmente tuyo.' }));
   if (p.noCal && (p.blocks || []).some((b) => b.auto)) box.append(h('p', { class: 'small', text: 'Este plan se hizo sin leer tu calendario, así que puede solaparse con tus clases. ' + (mcp ? 'Pulsa Reorganizar todo.' : 'Abre la página desde Claude con Google Calendar conectado.') }));
   if (p.coach && p.coach.summary) { const cb = h('div', { class: 'es-coach' }, h('h3', { text: 'Estrategia' }), h('p', { text: p.coach.summary })); if (p.coach.alerts && p.coach.alerts.length) cb.append(h('ul', { class: 'st-ins' }, p.coach.alerts.map((a) => h('li', { text: a })))); box.append(cb); }
@@ -10689,7 +10696,7 @@ function esPlanView(box) {
         h('div', {}, h('div', { class: 'blk-t', text: b.title }),
           h('div', { class: 't-meta' }, h('span', { class: 'dot2', style: '--h:' + hueOf(b.subject) }), h('span', { text: b.subject }), b.kind && ES_KIND[b.kind] ? h('span', { class: 'chip-ev', text: ES_KIND[b.kind] }) : null, b.cal ? h('span', { class: 'due', text: 'En tu calendario' }) : null),
           b.tip ? h('div', { class: 'es-tip', text: b.tip }) : null,
-          !b.done ? h('div', { class: 'es-bact' }, !blkTimed(b) ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => blkPickTime(b), text: 'Elegir hora' }) : null, h('button', { class: 'btn sm', type: 'button', onclick: () => esStartBlock(b), text: 'Empezar' }), h('button', { class: 'btn sm', type: 'button', onclick: () => esOpenBlockApuntes(b), text: b.libId ? 'Abrir apuntes' : 'Ir a la asignatura' })) : null))))));
+          !b.done ? h('div', { class: 'es-bact' }, !blkTimed(b) ? h('button', { class: 'btn sm primary', type: 'button', onclick: () => blkPickTime(b), text: 'Elegir hora' }) : null, h('button', { class: 'btn sm', type: 'button', onclick: () => esStartBlock(b), text: 'Empezar' }), h('button', { class: 'btn sm', type: 'button', onclick: () => esOpenBlockApuntes(b), text: b.libId ? 'Abrir apuntes' : 'Ir a la asignatura' })) : null, blkTools(b)))))));
   }
   const pend = (p.blocks || []).filter((b) => !b.cal && !b.done && b.auto && blkTimed(b)).length;
   if (mcp) box.append(h('div', { class: 'toolbar' }, h('button', { class: 'btn', type: 'button', disabled: !pend || state.planBusy, onclick: () => { state.planConfirm = true; addPlanToCalendar(); }, text: pend ? 'Añadir ' + pend + (pend === 1 ? ' bloque' : ' bloques') + ' a Google Calendar' : 'Todo en tu calendario' })));
@@ -10732,11 +10739,11 @@ function blkPickTime(b0) {
 state.pc = { text: '', busy: false, draft: null, err: '' };
 const PC_CHIPS = ['Pasa los bloques del viernes al sábado.', 'Quita los bloques de repaso de esta semana.', 'Pon los bloques de esta semana sin hora, solo el día.', 'Mueve el bloque de mañana a la tarde.', 'Añade un bloque de práctica el lunes.'];
 function pcClose() { const m = $('#planChg'); if (m) m.remove(); }
-function openPlanChange() {
-  pcClose(); const P = state.pc; P.draft = null; P.err = ''; P.busy = false;
+function openPlanChange(pre, auto) {
+  pcClose(); const P = state.pc; P.draft = null; P.err = ''; P.busy = false; if (typeof pre === 'string') P.text = pre;
   document.body.append(h('div', { class: 'modal-bg', id: 'planChg', onclick: (e) => { if (e.target.id === 'planChg') pcClose(); } },
     h('div', { class: 'modal wz', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Pedir cambios a la IA' }, h('div', { id: 'pcBody' }))));
-  pcPaint();
+  pcPaint(); if (auto === true && String(P.text || '').trim() && sample) pcRun();
 }
 function pcWhenTxt(b) { return fmtDay(b.day) + ' · ' + blkWhen(b); }
 function pcPaint() {
@@ -10748,19 +10755,19 @@ function pcPaint() {
       h('div', { class: 'wz-chips' }, PC_CHIPS.map((t) => h('button', { class: 'btn sm', type: 'button', onclick: () => { P.text = (P.text ? P.text.trim() + ' ' : '') + t; ta.value = P.text; ta.focus(); }, text: t }))),
       ta, P.err ? h('p', { class: 'mu-err', role: 'alert', text: P.err }) : null,
       h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', disabled: P.busy || !sample, onclick: pcRun, text: P.busy ? 'La IA está pensando…' : 'Proponer cambios' }), !sample ? h('span', { class: 'small', text: 'La IA no está disponible en esta vista.' }) : null));
-    setTimeout(() => { try { ta.focus(); } catch (e) {} }, 30);
+    setTimeout(() => { try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } catch (e) {} }, 30);
     return;
   }
   const li = d.changes.map((x) => {
-    if (x.op === 'quitar') return h('li', {}, h('b', { text: 'Quitar: ' }), x.before.subject + ' · ' + x.before.title + ' (' + pcWhenTxt(x.before) + ')', x.before.cal ? h('span', { class: 'small', text: ' · también se quitará de tu Google Calendar' }) : null);
-    if (x.op === 'anadir') return h('li', {}, h('b', { text: 'Añadir: ' }), x.after.subject + ' · ' + x.after.title + ' (' + pcWhenTxt(x.after) + ')');
-    return h('li', {}, h('b', { text: 'Cambiar: ' }), x.after.subject + ' · ' + x.after.title + ' — ' + pcWhenTxt(x.before) + ' → ' + pcWhenTxt(x.after), x.before.cal ? h('span', { class: 'small', text: ' · se actualizará también en Google Calendar' }) : null);
+    if (x.op === 'quitar') return h('li', {}, pcChk(x, d), h('b', { text: 'Quitar: ' }), x.before.subject + ' · ' + x.before.title + ' (' + pcWhenTxt(x.before) + ')', x.before.cal ? h('span', { class: 'small', text: ' · también se quitará de tu Google Calendar' }) : null);
+    if (x.op === 'anadir') return h('li', {}, pcChk(x, d), h('b', { text: 'Añadir: ' }), x.after.subject + ' · ' + x.after.title + ' (' + pcWhenTxt(x.after) + ')');
+    return h('li', {}, pcChk(x, d), h('b', { text: 'Cambiar: ' }), x.after.subject + ' · ' + x.after.title + ' — ' + pcWhenTxt(x.before) + ' → ' + pcWhenTxt(x.after), x.before.cal ? h('span', { class: 'small', text: ' · se actualizará también en Google Calendar' }) : null);
   });
   body.replaceChildren(head,
     d.summary ? h('div', { class: 'es-coach' }, h('p', { text: d.summary })) : null,
     d.changes.length ? h('ul', { class: 'st-ins' }, li) : h('p', { class: 'note', text: 'No he podido aplicar ningún cambio válido con lo que has pedido. Prueba a ser más concreto (día, hora o bloque).' }),
     d.dropped ? h('p', { class: 'small', text: d.dropped + (d.dropped === 1 ? ' cambio descartado' : ' cambios descartados') + ' por chocar con tu agenda o no ser válidos.' }) : null,
-    h('div', { class: 'toolbar' }, d.changes.length ? h('button', { class: 'btn primary', type: 'button', id: 'pcApply', onclick: pcApply, text: 'Aplicar ' + d.changes.length + (d.changes.length === 1 ? ' cambio' : ' cambios') }) : null, h('button', { class: 'btn', type: 'button', onclick: () => { P.draft = null; pcPaint(); }, text: 'Cambiar la petición' })));
+    h('div', { class: 'toolbar' }, d.changes.length ? h('button', { class: 'btn primary', type: 'button', id: 'pcApply', onclick: pcApply, text: pcApplyTxt(d) }) : null, h('button', { class: 'btn', type: 'button', onclick: () => { P.draft = null; pcPaint(); }, text: 'Cambiar la petición' })));
 }
 async function pcRun() {
   const P = state.pc; if (P.busy || !sample) return; const text = String(P.text || '').trim(); if (!text) { P.err = 'Escribe qué quieres cambiar.'; pcPaint(); return; }
@@ -10794,14 +10801,14 @@ async function pcRun() {
       const op = String(x.op || '').toLowerCase().replace('ñ', 'n'), dia = /^\d{4}-\d{2}-\d{2}$/.test(x.dia || '') ? x.dia : '';
       if (dia && (dia < today || dia > lastDay)) { dropped++; continue; }
       const kindOk = ['estudiar', 'practicar', 'repaso'].includes(x.tipo) ? x.tipo : '';
-      if (op === 'quitar') { const b = ids.has(x.id) && cur.get(x.id); if (!b) { dropped++; continue; } cur.delete(x.id); changes.push({ op, before: b }); continue; }
+      if (op === 'quitar') { const b = ids.has(x.id) && cur.get(x.id); if (!b) { dropped++; continue; } cur.delete(x.id); changes.push({ op, before: b, ok: true }); continue; }
       if (op === 'mover' || op === 'editar') {
         const b = ids.has(x.id) && cur.get(x.id); if (!b) { dropped++; continue; }
         const nb = { ...b }; if (dia) nb.day = dia; if (x.titulo) nb.title = String(x.titulo).slice(0, 80); if (kindOk) nb.kind = kindOk;
         if (!applyWhen(nb, x)) { dropped++; continue; }
         if (nb.day === b.day && nb.start === b.start && nb.end === b.end && nb.title === b.title && nb.kind === b.kind && !!nb.noTime === !!b.noTime) continue;
         if (blkTimed(nb) && (nb.day !== b.day || nb.start !== b.start || nb.end !== b.end) && clash(toMin(nb.start), toMin(nb.end), takenOf(nb.day, b.id))) { dropped++; continue; }
-        cur.set(b.id, nb); changes.push({ op: 'mover', before: b, after: nb }); continue;
+        cur.set(b.id, nb); changes.push({ op: 'mover', before: b, after: nb, ok: true }); continue;
       }
       if (op === 'anadir') {
         const sid = Object.keys(state.subjects || {}).find((k) => String(state.subjects[k].name).toLowerCase() === String(x.asignatura || '').toLowerCase());
@@ -10810,7 +10817,7 @@ async function pcRun() {
         if (x.sinHora === true || (!x.inicio && !x.fin)) { if (!applyWhen(nb, { sinHora: true, duracion: x.duracion || cond().block })) { dropped++; continue; } }
         else if (!applyWhen(nb, x)) { dropped++; continue; }
         if (blkTimed(nb) && clash(toMin(nb.start), toMin(nb.end), takenOf(nb.day, nb.id))) { dropped++; continue; }
-        added.push(nb); changes.push({ op: 'anadir', after: nb }); continue;
+        added.push(nb); changes.push({ op: 'anadir', after: nb, ok: true }); continue;
       }
       dropped++;
     }
@@ -10819,12 +10826,48 @@ async function pcRun() {
   finally { P.busy = false; pcPaint(); }
 }
 async function pcApply() {
-  const P = state.pc, d = P.draft, btn = $('#pcApply'); if (!d || !d.changes.length) return;
+  const P = state.pc, d = P.draft, btn = $('#pcApply'); const chosen = d ? d.changes.filter((x) => x.ok) : []; if (!d || !chosen.length) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+  const prev = ((state.plan && state.plan.blocks) || []).filter(Boolean);
   try {
-    await put('plan/current', { ...state.plan, blocks: d.blocks, updatedAt: Date.now() });
-    const n = d.changes.length; P.draft = null; P.text = ''; pcClose(); toast('Plan cambiado: ' + n + (n === 1 ? ' cambio aplicado.' : ' cambios aplicados.')); blkRefresh();
-  } catch (e) { toast('No se pudieron guardar los cambios.'); if (btn) { btn.disabled = false; btn.textContent = 'Aplicar ' + d.changes.length + (d.changes.length === 1 ? ' cambio' : ' cambios'); } }
+    let list = prev.map((b) => ({ ...b }));
+    chosen.forEach((x) => { if (x.op === 'quitar') list = list.filter((b) => b.id !== x.before.id); else if (x.op === 'mover') list = list.map((b) => (b.id === x.before.id ? x.after : b)); else if (x.op === 'anadir') list.push(x.after); });
+    await stSaveAll(list);
+    const n = chosen.length; P.draft = null; P.text = ''; pcClose(); toast('Plan cambiado: ' + n + (n === 1 ? ' cambio aplicado.' : ' cambios aplicados.'), { label: 'Deshacer', fn: () => { stSaveAll(prev); } }); blkRefresh();
+  } catch (e) { toast('No se pudieron guardar los cambios.'); if (btn) { btn.disabled = false; btn.textContent = pcApplyTxt(d); } }
+}
+function pcApplyTxt(d) { const n = d.changes.filter((x) => x.ok).length; return n ? 'Aplicar ' + n + (n === 1 ? ' cambio' : ' cambios') : 'Marca algún cambio'; }
+function pcChk(x, d) {
+  const cb = h('input', { type: 'checkbox', checked: x.ok ? true : false, 'aria-label': 'Aplicar este cambio', onchange: () => { x.ok = cb.checked; const bt = $('#pcApply'); if (bt) { bt.textContent = pcApplyTxt(d); bt.disabled = !d.changes.some((c) => c.ok); } } });
+  return cb;
+}
+
+/* ---------- Gestión manual rápida de los bloques del plan ---------- */
+async function stSaveAll(blocks) { await put('plan/current', { ...(state.plan || {}), blocks, updatedAt: Date.now() }); planRefreshAll(); }
+async function blkMoveTomorrow(b0) {
+  const all = ((state.plan && state.plan.blocks) || []).filter(Boolean), b = all.find((x) => x.id === b0.id); if (!b) return;
+  const today = todayISO(), day = addDaysISO(b.day < today ? today : b.day, 1); let warn = '';
+  if (blkTimed(b)) { let bz = []; try { bz = busyOn(day, undefined, false); } catch (x) {} const taken = bz.concat(all.filter((x) => x.id !== b.id && x.day === day && blkTimed(x)).map((x) => [toMin(x.start), toMin(x.end)])); if (clash(toMin(b.start), toMin(b.end), taken)) warn = ' (se solapa con algo de ese día)'; }
+  await stSaveAll(all.map((x) => (x.id === b.id ? { ...x, day, auto: false } : x)));
+  toast('Movido a ' + fmtDay(day) + warn + '.', { label: 'Deshacer', fn: () => { stSaveAll(all); } });
+}
+async function blkRemove(b0) {
+  const all = ((state.plan && state.plan.blocks) || []).filter(Boolean), b = all.find((x) => x.id === b0.id); if (!b) return;
+  await stSaveAll(all.filter((x) => x.id !== b.id));
+  toast('Quitado: ' + String(b.title || 'bloque').slice(0, 40) + (mcp && b.cal ? ' (también de Google Calendar)' : '') + '.', { label: 'Deshacer', fn: () => { stSaveAll(all); } });
+}
+function blkTools(b) {
+  return h('div', { class: 'es-bact blk-tools' },
+    h('button', { class: 'btn sm', type: 'button', onclick: () => openSessModal(b.id), text: 'Editar' }),
+    !b.done ? h('button', { class: 'btn sm', type: 'button', onclick: () => blkMoveTomorrow(b), text: 'Mañana' }) : null,
+    h('button', { class: 'btn sm', type: 'button', disabled: !sample, onclick: () => openPlanChange('Sobre «' + String(b.title || '').slice(0, 50) + '» (' + fmtDay(b.day) + ', ' + blkWhen(b) + '): ', false), text: 'Pedir a la IA' }),
+    h('button', { class: 'btn sm danger', type: 'button', onclick: () => blkRemove(b), text: 'Quitar' }));
+}
+function blkAiBar() {
+  const qIn = h('input', { type: 'text', class: 'pc-in', maxlength: 400, placeholder: 'Dile a la IA qué cambiar: «pasa el viernes al sábado», «quita los repasos»…', 'aria-label': 'Pedir un cambio a la IA' });
+  const go = () => { const t = qIn.value.trim(); if (t) openPlanChange(t, true); };
+  qIn.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+  return h('div', { class: 'pc-bar' }, qIn, h('button', { class: 'btn primary', type: 'button', disabled: !sample, onclick: go, text: 'Cambiar con IA' }));
 }
 
 function esNewForm() { const first = state.subjects[state.sel] ? state.sel : (sortedSubjects()[0] || [''])[0]; return { subjectId: first, title: 'Examen', date: addDaysISO(todayISO(), 14), time: '', weight: 2 }; }
@@ -22590,6 +22633,7 @@ tkClash = function (day, start, end, skipId) {
 .cal-wide .wk-day .row .sub{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 /* Ventanas emergentes: en pantallas anchas flotan con las 4 esquinas redondeadas (la regla móvil dejaba las inferiores cuadradas) */
 @media (min-width:600px){.modal{border-radius:28px!important;box-shadow:0 30px 70px -24px rgba(10,25,60,.45),0 0 0 1px color-mix(in srgb,var(--fg) 6%,transparent)}}
+.pc-bar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}.pc-bar .pc-in{flex:1 1 260px;min-width:0;min-height:44px;box-sizing:border-box}.blk-tools{opacity:.95}.blk-tools .btn.danger{margin-left:auto}#planChg .st-ins{list-style:none;padding-left:0}#planChg .st-ins li{margin:6px 0}#planChg .st-ins li input{margin:0 8px 0 0;vertical-align:middle;width:18px;height:18px}
 /* Cabecera del calendario: los controles no se pisan */
 #view-calendario .cal2 .cal-hd{min-width:0;flex-wrap:nowrap}
 #view-calendario .cal2 .cal-hd .cal-rb{flex:none}
