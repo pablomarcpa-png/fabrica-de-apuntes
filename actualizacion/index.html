@@ -10418,7 +10418,7 @@ async function wzChatSend() {
   aigWatch(text); W.chat.push({ r: 'u', t: text.slice(0, 20000) }); W.text = ''; W.chatBusy = true; wzForm();
   try {
     const calText = await wzCalText(W);
-    const ctx = 'Eres el planificador de estudio de un estudiante universitario y hablas con él en español, de forma cercana y directa. Hoy es ' + todayISO() + '.\n' + wzTargetText() + '\n\n' + condBlock() + calText + (W.useCtx !== false ? 'Su rutina fija (si la hay) está en el contexto permanente: úsala junto con su calendario para decirle a qué horas CONCRETAS puede estudiar cada día, sin pisar clases, entrenos ni trabajo.\n\n' : '') + 'Tu objetivo: entender cómo quiere organizarse para diseñar luego su plan. Responde en 2-4 líneas como máximo. Haz como mucho UNA pregunta corta si falta algo importante (horas, días libres, qué le preocupa); si ya tienes suficiente, dile en una frase qué plan harás y que pulse «Generar mi plan». No generes el plan aquí, no inventes datos.';
+    const ctx = 'Eres el planificador de estudio de un estudiante universitario y hablas con él en español, de forma cercana y directa. Hoy es ' + todayISO() + '.\n' + wzTargetText() + '\n\n' + condBlock() + calText + (W.useCtx !== false ? 'Su rutina fija (si la hay) está en el contexto permanente: úsala junto con su calendario para decirle a qué horas CONCRETAS puede estudiar cada día, sin pisar clases, entrenos ni trabajo.\n\n' : '') + 'Si lo que pide (horas, días o franjas) contradice sus condiciones por defecto, sus instrucciones mandan: dile que lo harás tal como lo pide. Tu objetivo: entender cómo quiere organizarse para diseñar luego su plan. Responde en 2-4 líneas como máximo. Haz como mucho UNA pregunta corta si falta algo importante (horas, días libres, qué le preocupa); si ya tienes suficiente, dile en una frase qué plan harás y que pulse «Generar mi plan». No generes el plan aquí, no inventes datos.';
     const input = W.chat.map((m, i) => ({ role: m.r === 'u' ? 'user' : 'assistant', content: i === 0 ? ctx + '\n\nMensaje del estudiante: ' + m.t : m.t }));
     const r = await sample(input, { modelTier: 'quick', cache: false, noRoutine: W.useCtx === false });
     W.chat.push({ r: 'a', t: String((r && r.text) || 'Entendido. Pulsa «Generar mi plan» cuando quieras.').slice(0, 900) });
@@ -10447,11 +10447,14 @@ async function esAiPlan(W) {
   const old = (state.plan && state.plan.blocks) || [], subjNames = subsSel.map(([, s]) => s.name);
   const isRep = (b) => !b.done && !b.cal && (general ? (b.ai && !b.examId && subjNames.includes(b.subject)) : (b.examId === exams[0].id && (b.auto || b.ai)));
   const replace = old.filter(isRep), keep = old.filter((b) => !isRep(b));
-  const winS = toMin(c.start), winE = toMin(c.end);
-  const capDay = (d) => c.hours[(new Date(d + 'T12:00:00').getDay() + 6) % 7] * 60;
+  // Si el estudiante ha dado instrucciones, mandan sobre la ventana y los días de descanso de «Mis condiciones» (que pasan a ser solo valores por defecto)
+  const hasInstr = W.chat.some((m) => m.r === 'u');
+  const winS = hasInstr ? Math.min(toMin(c.start), 7 * 60) : toMin(c.start), winE = hasInstr ? Math.max(toMin(c.end), 23 * 60) : toMin(c.end);
+  const defCap = (d) => c.hours[(new Date(d + 'T12:00:00').getDay() + 6) % 7] * 60;
+  const capDay = (d) => hasInstr ? Math.max(defCap(d), 600) : defCap(d);
   const floorOf = (d) => (d === today ? Math.max(winS, Math.ceil((now.getHours() * 60 + now.getMinutes() + 10) / 15) * 15) : winS);
   const busyOf = (d) => busyOn(d, evs, !ctxOn).concat(keep.filter((b) => b.day === d).map((b) => [toMin(b.start), toMin(b.end)])).sort((a, b) => a[0] - b[0]);
-  const dayLines = days.filter((d) => capDay(d) > 0 && floorOf(d) + 25 <= winE).map((d) => d + ' (' + ES_DOW[(new Date(d + 'T12:00:00').getDay() + 6) % 7] + ') máx ' + capDay(d) / 60 + ' h; desde ' + hhmm(floorOf(d)) + ' hasta ' + c.end + '; ocupado: ' + (busyOf(d).map(([a, b]) => hhmm(a) + '–' + hhmm(Math.min(b, 1439))).join(', ') || 'nada')).join('\n');
+  const dayLines = days.filter((d) => capDay(d) > 0 && floorOf(d) + 25 <= winE).map((d) => d + ' (' + ES_DOW[(new Date(d + 'T12:00:00').getDay() + 6) % 7] + ') ' + (hasInstr ? 'por defecto ' + (defCap(d) ? 'hasta ' + defCap(d) / 60 + ' h entre ' + c.start + ' y ' + c.end : 'día de descanso') + '; límite absoluto ' + capDay(d) / 60 + ' h entre ' + hhmm(floorOf(d)) + ' y ' + hhmm(winE) : 'máx ' + capDay(d) / 60 + ' h; desde ' + hhmm(floorOf(d)) + ' hasta ' + c.end) + '; ocupado: ' + (busyOf(d).map(([a, b]) => hhmm(a) + '–' + hhmm(Math.min(b, 1439))).join(', ') || 'nada')).join('\n');
   const instr = W.chat.filter((m) => m.r === 'u').map((m) => m.t).join(' | ').slice(0, 12000) || '(el estudiante no ha dado instrucciones: usa tu criterio)';
   let target, schema, crit;
   if (!general) {
@@ -10465,8 +10468,8 @@ async function esAiPlan(W) {
     crit = 'reparte el tiempo entre las asignaturas según su dificultad y la cercanía de sus exámenes, alternando teoría, práctica y repaso, con descansos y sin saturar ningún día.';
   }
   const input = 'Eres el planificador de estudio de un estudiante universitario. Hoy es ' + today + ' y son las ' + hhmm(now.getHours() * 60 + now.getMinutes()) + '. Diseña el MEJOR plan posible entre ' + today + ' y ' + lastDay + '.\n\n'
-    + condBlock() + habitBlockOnly() + target + '\n\nDÍAS DISPONIBLES (datos; no coloques nada fuera de la ventana ni encima de lo ocupado, deja 10 min libres entre bloques):\n' + dayLines + '\n\n'
-    + 'CONVERSACIÓN CON EL ESTUDIANTE (sus instrucciones; prioridad máxima salvo que contradigan los límites de horas): ' + instr + '\n\n'
+    + condBlock() + habitBlockOnly() + target + '\n\nDÍAS DISPONIBLES (datos; ' + (hasInstr ? 'no coloques nada fuera del límite absoluto ni encima de lo ocupado' : 'no coloques nada fuera de la ventana ni encima de lo ocupado') + ', deja 10 min libres entre bloques):\n' + dayLines + '\n\n'
+    + (hasInstr ? 'INSTRUCCIONES DEL ESTUDIANTE (PRIORIDAD ABSOLUTA, mandan sobre todo lo demás): ' + instr + '\nLas horas máximas por día, la ventana horaria y los días de descanso de las condiciones son SOLO valores por defecto. Si las instrucciones piden otras horas, días o franjas (por ejemplo «de 15:00 a 16:00 todos los días»), haz exactamente eso aunque contradiga esas condiciones, y no avises de que las incumples. En lo que las instrucciones no digan nada, usa las condiciones. Lo único que no puedes hacer es pisar lo ocupado ni salirte del límite absoluto. En el resumen di brevemente cómo has aplicado sus instrucciones.\n\n' : 'CONVERSACIÓN CON EL ESTUDIANTE: ' + instr + '\n\n')
     + 'Criterios: ' + crit + ' Mezcla asignaturas con sentido (máx. ' + c.maxSubj + ' por día); bloques de ' + c.block + ' min (entre 30 y 90); respeta las horas máximas de cada día.\n'
     + 'Responde SOLO un JSON: {"resumen":"2-3 frases explicando la estrategia en lenguaje directo","avisos":["hasta 3 riesgos concretos"],' + schema + '}';
   const raw = await sample.json(input, { modelTier: 'default', cache: false, noRoutine: !ctxOn });
