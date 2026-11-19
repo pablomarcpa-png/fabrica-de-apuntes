@@ -17493,6 +17493,43 @@ function ncAttachUi() {
   const row = imgs.length || docs.length ? h('div', { class: 'nc-th' }, imgs, docs) : null;
   return { btn: h('span', { class: 'nc-attg' }, kids), row };
 }
+/* Pegar una foto (⌘V) o arrastrar una captura encima del chat de Jarvis, del Núcleo o de los agentes */
+const ncIsImg = (f) => /^image\//.test((f && f.type) || '') || /\.(png|jpe?g|webp|gif|bmp|heic|heif|avif|tiff?)$/i.test((f && f.name) || '');
+function ncClipFiles(dt) {
+  if (!dt) return [];
+  const fs = Array.from(dt.files || []); if (fs.length) return fs;
+  const out = []; Array.from(dt.items || []).forEach((it) => { if (it.kind === 'file') { const f = it.getAsFile(); if (f) out.push(f); } }); return out;
+}
+async function ncTakeFiles(files, where) {
+  files = Array.from(files || []); if (!files.length) return;
+  const imgs = files.filter(ncIsImg), docs = files.filter((f) => !ncIsImg(f));
+  if (imgs.length) {
+    if (!state.nc.imgCaps) { try { await ncCaps(); } catch (e) {} }
+    const caps = state.nc.imgCaps;
+    if (!caps) toast('Esta vista no permite enviar fotos a la IA. Ábrela desde Claude y acepta el permiso de imágenes.');
+    else { const mx = Math.min(4, caps.maxCount || 4); for (const f of imgs) { if (state.nc.imgs.length >= mx) { toast('Máximo ' + mx + ' fotos por mensaje.'); break; } try { state.nc.imgs.push(await ncPrepImage(f)); } catch (e) { toast(e && e.message === 'grande' ? 'Esa foto es demasiado grande.' : 'No he podido leer esa imagen (prueba con JPG o PNG).'); } } toast(imgs.length === 1 ? 'Foto añadida al mensaje.' : 'Fotos añadidas al mensaje.'); }
+  }
+  if (docs.length) await jvxAddDocs(docs);
+  if (where === 'ac') { try { acAttPaint(); } catch (e) {} } else { try { renderNucleo(true); } catch (e) {} }
+}
+document.addEventListener('paste', (e) => {
+  const t = e.target; if (!t || (t.id !== 'ncIn' && t.id !== 'acIn')) return;
+  const files = ncClipFiles(e.clipboardData); if (!files.length) return;
+  const txt = (e.clipboardData && e.clipboardData.getData ? e.clipboardData.getData('text/plain') : '') || '';
+  if (txt.trim() && !/^\s*(https?:|file:|data:)\S+\s*$/.test(txt)) return; /* si trae texto de verdad, se pega el texto como siempre */
+  e.preventDefault(); ncTakeFiles(files, t.id === 'acIn' ? 'ac' : 'nc');
+}, true);
+(function () {
+  const st = document.createElement('style');
+  st.textContent = '.fa-dropping{outline:3px dashed var(--accent,#7c5cff);outline-offset:-12px}section.fa-dropping{position:relative}.fa-dropping::after{content:"Suelta aquí para añadirlo";position:absolute;inset:0;display:grid;place-items:center;font:700 22px system-ui;color:#fff;background:rgba(70,50,190,.45);pointer-events:none;z-index:60;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}';
+  document.head.append(st);
+  const hasFiles = (e) => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).indexOf('Files') >= 0);
+  const zone = (e) => { const t = e.target; if (!t || !t.closest) return null; const ov = t.closest('#ncOv'); if (ov) return { el: ov, where: 'nc' }; const ac = document.getElementById('acIn'), sec = ac && ac.closest('section'); return sec && sec.contains(t) ? { el: sec, where: 'ac' } : null; };
+  let cur = null; const off = () => { if (cur) { cur.classList.remove('fa-dropping'); cur = null; } };
+  document.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; const z = zone(e); if (!z) { off(); return; } e.preventDefault(); try { e.dataTransfer.dropEffect = 'copy'; } catch (x) {} if (cur !== z.el) { off(); cur = z.el; z.el.classList.add('fa-dropping'); } });
+  document.addEventListener('dragleave', (e) => { if (cur && (!e.relatedTarget || !cur.contains(e.relatedTarget))) off(); });
+  document.addEventListener('drop', (e) => { if (!hasFiles(e)) return; const z = zone(e); off(); if (!z) return; e.preventDefault(); e.stopPropagation(); ncTakeFiles(e.dataTransfer.files, z.where); }, true);
+})();
 const JV_PHOTO_HINT = '\n\nFOTOS Y NOTAS RÁPIDAS: si el estudiante adjunta fotos, descríbele brevemente lo que ves. Si dice que son notas rápidas (o te pide guardarlas en el inbox), transcribe fielmente el texto y llama a guardar_en_inbox_notion con UNA entrada por nota o tarea distinta (título corto + detalle con el texto completo); después confirma en una frase cuántas has guardado. Si no está claro qué son, pregunta qué quiere hacer y NO guardes nada. Si algo no se lee bien, dilo en vez de inventarlo.';
 const JV_FREE = '\n\nCONVERSACIÓN LIBRE: además de gestionar su estudio, puedes charlar y ayudarle con CUALQUIER tema (explicar, redactar, calcular, opinar, ideas, trabajo, vida diaria) como un chat de IA normal, sin forzarlo a hablar de la app. Si pide algo largo (un texto, una transcripción, un código), la regla de "máximo 5 líneas" no se aplica: da la respuesta completa.';
 const JV_SHEETS_HINT = '\n\nHOJAS DE APUNTES (fotos o archivos): si el estudiante adjunta fotos de hojas de apuntes, libreta, pizarra o libro y pide transcribirlas (o es evidente que son apuntes de clase), haz esto: 1) TRANSCRIBE TODO fielmente en español, en markdown, con títulos y listas si los hay en la hoja, copiando fórmulas y datos tal cual; escribe [ilegible] donde no se lea y NUNCA inventes texto; 2) deduce a qué ASIGNATURA pertenece mirando su lista de ASIGNATURAS (por temas, términos, nombres) y di cuál crees y por qué en una frase; si dudas entre dos, dilo; 3) termina proponiendo: «¿Lo guardo en la biblioteca de «Asignatura» como «Título corto», con la transcripción y las fotos originales?». Si dice que sí (o elige otra asignatura), llama a guardar_adjuntos con asignatura_id, titulo y transcripcion = la transcripción COMPLETA que escribiste (sin resumir ni recortar): guarda la transcripción como apuntes y las fotos/archivos originales como archivos de la biblioteca. Si solo quiere las fotos o archivos sin texto, llámala sin transcripcion; si solo quiere el texto, usa anadir_apuntes (destino "biblioteca", o "apuntes" para los apuntes del profesor). Si pide guardar un archivo o foto adjunto sin transcribir, usa guardar_adjuntos directamente. Después confirma en una línea dónde quedó. No guardes nada sin que lo acepte. Si son notas rápidas o tareas sueltas (no apuntes de estudio), aplica la regla del INBOX de Notion en vez de esta. Si envía varias fotos de la misma asignatura, únelas en una sola transcripción en orden. Si adjunta un PDF o documento con texto, ya viene leído: ofrécele guardarlo igual.';
