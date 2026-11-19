@@ -7963,7 +7963,7 @@ async function acContext(id, a) {
 function acAttPaint() {
   const box = $('#acAtt'); if (!box) return; const J = state.jvx, kids = [], busy = !!state.ac.busy;
   if (state.nc.imgCaps) { const fin = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, 'aria-label': 'Subir fotos', onchange: async () => { if (fin.files.length) { const caps = state.nc.imgCaps, mx = Math.min(4, caps.maxCount || 4); for (const f of Array.from(fin.files)) { if (state.nc.imgs.length >= mx) { toast('Máximo ' + mx + ' fotos por mensaje.'); break; } try { state.nc.imgs.push(await ncPrepImage(f)); } catch (e) { toast('No he podido leer esa imagen (prueba con JPG o PNG).'); } } fin.value = ''; acAttPaint(); } } }); kids.push(h('button', { class: 'nc-att', type: 'button', 'aria-label': 'Adjuntar fotos', disabled: busy, onclick: () => fin.click() }, ic('image'), fin)); }
-  const fd = h('input', { type: 'file', accept: '.pdf,.docx,.docm,.pptx,.pptm,.odt,.odp,.txt,.md,.csv,.json,.html,.htm,audio/*,.m4a,.m4r,.caf,.aac,.aif,.aiff,.mp3,.wav,.qta,.mp4,.mov,.3gp,.amr,.flac,.ogg', multiple: true, hidden: true, 'aria-label': 'Subir documentos o audios', onchange: async () => { if (fd.files.length) { await jvxAddDocs(fd.files); fd.value = ''; acAttPaint(); } } });
+  const fd = h('input', { type: 'file', accept: 'image/*,.pdf,.docx,.docm,.pptx,.pptm,.odt,.odp,.txt,.md,.csv,.json,.html,.htm,audio/*,.m4a,.m4r,.caf,.aac,.aif,.aiff,.mp3,.wav,.qta,.mp4,.mov,.3gp,.amr,.flac,.ogg', multiple: true, hidden: true, 'aria-label': 'Subir documentos o audios', onchange: async () => { if (fd.files.length) { await jvxAddDocs(fd.files); fd.value = ''; acAttPaint(); } } });
   kids.push(h('button', { class: 'nc-att', type: 'button', 'aria-label': 'Adjuntar documentos o audios', disabled: busy, onclick: () => fd.click() }, ic('doc'), fd));
   const chips = (state.nc.imgs || []).map((im, i) => h('span', { class: 'nc-thi' }, h('img', { src: im.url, alt: 'Foto ' + (i + 1) }), h('button', { type: 'button', 'aria-label': 'Quitar foto ' + (i + 1), onclick: () => { state.nc.imgs.splice(i, 1); acAttPaint(); }, text: '×' })))
     .concat((J.pending || []).map((n) => h('span', { class: 'nc-dc' }, ic('doc'), h('span', { text: n.slice(0, 24) + (n.length > 24 ? '…' : '') }), h('button', { type: 'button', 'aria-label': 'Quitar ' + n, onclick: () => { J.pending = J.pending.filter((x) => x !== n); acAttPaint(); }, text: '×' }))));
@@ -17486,7 +17486,7 @@ function ncAttachUi() {
     const fin = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, 'aria-label': 'Subir fotos', onchange: () => { if (fin.files.length) ncAddImages(fin.files); } });
     kids.push(h('button', { class: 'nc-att', type: 'button', 'aria-label': 'Adjuntar fotos', disabled: state.nc.busy, onclick: () => fin.click() }, ic('image'), fin));
   }
-  const fd = h('input', { type: 'file', accept: '.pdf,.docx,.docm,.pptx,.pptm,.ppsx,.ppt,.pps,.odt,.odp,.txt,.md,.markdown,.csv,.json,.html,.htm,audio/*,.m4a,.m4r,.caf,.aac,.aif,.aiff,.mp3,.wav,.qta,.mp4,.mov,.3gp,.amr,.flac,.ogg', multiple: true, hidden: true, 'aria-label': 'Subir documentos o audios', onchange: () => { if (fd.files.length) jvxAddDocs(fd.files); fd.value = ''; } });
+  const fd = h('input', { type: 'file', accept: 'image/*,.pdf,.docx,.docm,.pptx,.pptm,.ppsx,.ppt,.pps,.odt,.odp,.txt,.md,.markdown,.csv,.json,.html,.htm,audio/*,.m4a,.m4r,.caf,.aac,.aif,.aiff,.mp3,.wav,.qta,.mp4,.mov,.3gp,.amr,.flac,.ogg', multiple: true, hidden: true, 'aria-label': 'Subir documentos o audios', onchange: () => { if (fd.files.length) jvxAddDocs(fd.files); fd.value = ''; } });
   kids.push(h('button', { class: 'nc-att', type: 'button', 'aria-label': 'Adjuntar apuntes o documentos', disabled: state.nc.busy, onclick: () => fd.click() }, ic('doc'), fd));
   const imgs = state.nc.imgs.length ? state.nc.imgs.map((im, i) => h('span', { class: 'nc-thi' }, h('img', { src: im.url, alt: 'Foto ' + (i + 1) }), h('button', { type: 'button', 'aria-label': 'Quitar foto ' + (i + 1), onclick: () => { state.nc.imgs.splice(i, 1); renderNucleo(true); }, text: '×' }))) : [];
   const docs = J.pending.map((n) => h('span', { class: 'nc-dc' }, ic('doc'), h('span', { text: n.slice(0, 28) + (n.length > 28 ? '…' : '') + ' · ' + ((J.docs[n] || '').length ? jvxNum(J.docs[n].length) : 'audio/archivo') }), h('button', { type: 'button', 'aria-label': 'Quitar ' + n, onclick: () => { J.pending = J.pending.filter((x) => x !== n); renderNucleo(true); }, text: '×' })));
@@ -18057,8 +18057,10 @@ function jvxPre(text) {
   const base = text || (names.length === 1 ? 'Te paso un archivo.' : 'Te paso ' + names.length + ' archivos.'); J.view = base + '\nAdjuntos: ' + names.join(' · '); return base + note;
 }
 async function jvxAddDocs(files) {
-  const J = state.jvx;
+  const J = state.jvx, imgsIn = [];
   for (const f of Array.from(files)) {
+    /* Una foto que llega por el botón de documentos no se rechaza: se adjunta como foto */
+    if (/^image\//.test(f.type || '') || /\.(png|jpe?g|webp|gif|bmp|heic|heif|avif|tiff?)$/i.test(f.name)) { imgsIn.push(f); continue; }
     if (f.size > (/\.pdf$/i.test(f.name) ? 150 : 25) * 1024 * 1024) { toast('«' + f.name + '» pesa más de ' + (/\.pdf$/i.test(f.name) ? 150 : 25) + ' MB.'); continue; }
     if (/^(audio|video)\//.test(f.type || '') || /\.(m4a|m4r|caf|aac|aif|aiff|mp3|wav|qta|mp4|mov|3gp|amr|flac|ogg|opus|webm)$/i.test(f.name)) {
       try { J.files = J.files || {}; J.files[f.name] = await lfSnap(f); J.docs[f.name] = ''; if (!J.pending.includes(f.name)) J.pending.push(f.name); toast('«' + f.name + '» adjuntado: la IA no puede escucharlo, pero puede guardarlo tal cual.'); } catch (e) { toast('No se pudo leer «' + f.name + '».'); }
@@ -18071,6 +18073,11 @@ async function jvxAddDocs(files) {
       J.docs[f.name] = t.slice(0, NOTES_MAX); if (!J.pending.includes(f.name)) J.pending.push(f.name);
       try { J.files = J.files || {}; J.files[f.name] = await lfSnap(f); } catch (e) {}
     } catch (e) { toast('No se pudo leer «' + f.name + '».' + fileErrHint(f.name, e)); }
+  }
+  if (imgsIn.length) {
+    if (!state.nc.imgCaps) { try { await ncCaps(); } catch (e) {} }
+    if (state.nc.imgCaps) { await ncAddImages(imgsIn); toast(imgsIn.length === 1 ? 'Es una foto: la he adjuntado como foto.' : imgsIn.length + ' fotos adjuntadas como fotos.'); }
+    else toast('Esta vista no permite enviar fotos a la IA. Ábrela desde Claude y acepta el permiso de imágenes.');
   }
   renderNucleo(true);
 }
