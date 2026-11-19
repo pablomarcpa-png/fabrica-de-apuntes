@@ -3148,13 +3148,13 @@ function listView(box, sid, s) {
   box.append(spSubHead(s, 'Presentaciones', 'Importa, crea y edita con Claude · ' + s.name));
   box.append(h('div', { class: 'pz-top' },
     h('button', { class: 'btn primary', type: 'button', onclick: () => inp.click(), disabled: D.busy }, ic('doc'), ' Importar PowerPoint'),
-    h('button', { class: 'btn', type: 'button', onclick: () => { D.mode = 'form'; D.f = { kind: 'ai', n: 10, aud: '', style: 'limpio y profesional', lang: 'español', useLib: true, files: [] }; D.err = ''; paint(); } }, ic('sparkle'), ' Crear con IA'),
+    h('button', { class: 'btn', type: 'button', onclick: () => { if (window.dkStudio) { window.dkStudio.open({ sid, from: 'list' }); return; } D.mode = 'form'; D.f = { kind: 'ai', n: 10, aud: '', style: 'limpio y profesional', lang: 'español', useLib: true, files: [] }; D.err = ''; paint(); } }, ic('sparkle'), ' Crear con IA'),
     h('button', { class: 'btn', type: 'button', onclick: () => createManual(sid) }, ic('doc'), ' Crear a mano'),
     h('button', { class: 'btn', type: 'button', onclick: () => { D.mode = 'form'; D.f = { kind: 'link', url: '' }; D.err = ''; paint(); } }, 'Desde Claude (enlace)'), inp));
   if (D.err) box.append(h('p', { class: 'pz-err', text: D.err }));
   if (D.busy) box.append(h('div', { class: 'pz-work' }, h('i'), h('span', { text: 'Subiendo…' })));
   if (!decks.length) { box.append(h('p', { class: 'small', text: 'Todavía no hay presentaciones en esta asignatura. Importa una de PowerPoint o de Claude para editarla con IA, o crea una nueva.' })); return; }
-  box.append(h('div', { class: 'pz-list' }, decks.map((d) => { const [t, c] = stTxt(d); const pv = (d.previews || [])[0]; return h('button', { class: 'pz-card', type: 'button', onclick: () => { D.open = d.id; D.mode = 'deck'; paint(); } }, h('div', { class: 'pz-th' }, pv ? h('img', { src: pv.url, alt: '', loading: 'lazy' }) : h('span', { text: '📊' })), h('div', { class: 'pz-cb' }, h('b', { text: d.title }), h('div', { class: 'pz-row' }, h('span', { class: 'pz-chip ' + c, text: t }), h('small', { text: (d.slideCount ? d.slideCount + ' diapositivas · ' : '') + (d.mode === 'import' ? 'importada' : d.mode === 'manual' ? 'manual' : 'con IA') })))); })));
+  box.append(h('div', { class: 'pz-list' }, decks.map((d) => { const [t, c] = stTxt(d); const pv = (d.previews || [])[0]; return h('button', { class: 'pz-card', type: 'button', onclick: () => { if (d.mode === 'studio' && window.dkStudio) { window.dkStudio.openDeck(d.id, sid); return; } D.open = d.id; D.mode = 'deck'; paint(); } }, h('div', { class: 'pz-th' }, pv ? h('img', { src: pv.url, alt: '', loading: 'lazy' }) : h('span', { text: '📊' })), h('div', { class: 'pz-cb' }, h('b', { text: d.title }), h('div', { class: 'pz-row' }, h('span', { class: 'pz-chip ' + c, text: t }), h('small', { text: (d.slideCount ? d.slideCount + ' diapositivas · ' : '') + (d.mode === 'import' ? 'importada' : d.mode === 'manual' ? 'manual' : 'con IA') })))); })));
 }
 function formView(box, sid, s) {
   const f = D.f; box.append(spSubHead(s, f.kind === 'link' ? 'Importar de Claude' : 'Crear con IA', s.name));
@@ -3984,7 +3984,7 @@ async function put0(path, data) {
   catch (e) {
     if (e && e.code === 'quota_exceeded') toast('El almacenamiento está lleno.');
     else if (navigator.onLine === false) { state.offQ = state.offQ || {}; state.offQ[path] = data; offBar(); toast('Sin conexión: guardaré este cambio cuando vuelva internet.'); }
-    else toast('No se pudo guardar el último cambio.');
+    else if (window.faSaveFail) window.faSaveFail(path, data, e); else if (window.faSaveFail) window.faSaveFail(path, data, e); else toast('No se pudo guardar el último cambio.');
   }
 }
 state.offQ = {};
@@ -8003,7 +8003,7 @@ function acSection(id, a) {
   const send = h('button', { class: 'btn primary', id: 'acSend', type: 'button', onclick: go }, ic('send')); send.setAttribute('aria-label', 'Enviar');
   const subs = sortedSubjects();
   const pick = (plan || coord) ? null : h('div', { class: 'field' }, h('label', { for: 'acSubj', text: 'Asignatura' }),
-    h('select', { id: 'acSubj', onchange: (e) => { ac.subj = e.target.value; ac.msgs = []; acSave(); acPaint(); } }, h('option', { value: '', text: 'Sin asignatura (general)' }), subs.map(([k, s]) => h('option', { value: k, text: s.name }))));
+    h('select', { id: 'acSubj', onchange: (e) => { if (window.faHist) window.faHist.archiveAc(); ac.subj = e.target.value; ac.msgs = []; acSave(); acPaint(); } }, h('option', { value: '', text: 'Sin asignatura (general)' }), subs.map(([k, s]) => h('option', { value: k, text: s.name }))));
   if (pick) setTimeout(() => { const el = $('#acSubj'); if (el) el.value = ac.subj || ''; }, 0);
   const quick = plan ? [['Organízame esta semana', 'Organízame esta semana teniendo en cuenta mis entregas y mi calendario.'], ['Me queda poco para un examen', 'Tengo un examen cerca. Dime cómo repartir el estudio los próximos días.'], ['Reorganiza lo que me queda hoy', 'Reorganiza lo que me queda de hoy según mi plan y mi calendario.']] : [];
   setTimeout(acPaint, 0); setTimeout(() => { if (!state.nc.capsTried) { state.nc.capsTried = true; ncCaps().then(acAttPaint); } acAttPaint(); }, 0);
@@ -8011,7 +8011,7 @@ function acSection(id, a) {
     h('p', { class: 'small', text: 'Habla con el agente como con un bot. Usa sus instrucciones' + (plan ? ', tus asignaturas, entregas, plan y calendario.' : ' y su memoria.') + ' La conversación se guarda.' }),
     pick, quick.length ? h('div', { class: 'toolbar quick' }, quick.map(([l, q]) => h('button', { class: 'btn', type: 'button', onclick: () => acAsk(id, a, q) }, l))) : null,
     h('div', { id: 'acLog', class: 'chat' }), h('div', { id: 'acAtt', class: 'ac-att' }), h('div', { class: 'chat-form' }, ta, send),
-    h('div', { class: 'toolbar' }, h('button', { class: 'btn', type: 'button', onclick: () => { if (acCtl) acCtl.abort(); ac.msgs = []; ac.busy = false; acSave(); acPaint(); } }, 'Nueva conversación')));
+    h('div', { class: 'toolbar' }, h('button', { class: 'btn', type: 'button', onclick: () => { if (window.faHist) { window.faHist.newConv('ac', id); return; } if (acCtl) acCtl.abort(); ac.msgs = []; ac.busy = false; acSave(); acPaint(); } }, 'Nueva conversación')));
 }
 
 /* ---------- Jarvis: coordinador ---------- */
@@ -12656,7 +12656,8 @@ function renderNucleo(keep) {
   const inp = h('textarea', { id: 'ncIn', rows: '1', placeholder: sid === JV_ID ? 'Habla con Jarvis…' : 'Pregunta al Núcleo…', 'aria-label': 'Escribe tu pregunta', maxlength: '60000', onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = inp.value; inp.value = ''; ncAsk(v); } }, oninput: () => { inp.style.height = 'auto'; inp.style.height = Math.max(44, Math.min(120, inp.scrollHeight)) + 'px'; } }); inp.value = draft || ''; setTimeout(() => { if (inp.value) { inp.style.height = 'auto'; inp.style.height = Math.max(44, Math.min(120, inp.scrollHeight)) + 'px'; } }, 0);
   const send = h('button', { class: 'nc-send', type: 'button', 'aria-label': 'Enviar', disabled: state.nc.busy, onclick: () => { const v = inp.value; inp.value = ''; ncAsk(v); } }, ic('send'));
   const top = h('div', { class: 'nc-top' }, h('button', { class: 'nc-back', type: 'button', 'aria-label': 'Cerrar', onclick: ncClose }, ic('back')), ncOrb(hue, 30, 'mini'), h('div', { class: 'nc-tt' }, h('b', { text: sc.title }), h('span', { text: state.nc.busy ? 'Pensando…' : state.nc.st === 'done' ? 'Listo' : sc.sub })),
-    msgs.length ? h('button', { class: 'nc-new', type: 'button', onclick: () => { state.nc.msgs[sid] = []; state.jvx.photos = []; state.jvx.files = {}; ncSave(sid); renderNucleo(); } }, 'Nueva') : null);
+    window.faHist ? h('button', { class: 'nc-new', type: 'button', 'aria-label': 'Conversaciones anteriores', onclick: () => window.faHist.open('nc', sid) }, '🕘 Historial') : null,
+    msgs.length ? h('button', { class: 'nc-new', type: 'button', onclick: () => { try { window.faHist && window.faHist.archive('nc', sid); } catch (e) {} state.nc.msgs[sid] = []; state.jvx.photos = []; state.jvx.files = {}; ncSave(sid); renderNucleo(); } }, 'Nueva') : null);
   const body = h('div', { id: 'ncScroll', class: 'nc-scroll' });
   if (!msgs.length) {
     body.append(h('div', { class: 'nc-hero' }, ncOrb(hue, 150, 'big'), h('p', { class: 'nc-kick', text: sc.kick }), h('h2', {}, 'Hola' + (ncName() ? ' ' + ncName() : '') + ',', h('br'), '¿en qué te ayudo hoy?')),
@@ -14967,7 +14968,7 @@ function wbOpen(id, sid0, extra) {
     clearTimeout(saveT); if (!dirty && !toastIt) return; dirty = false; B.updatedAt = Date.now();
     const doc = { title: B.title || 'Pizarra', bg: B.bg === 'hojas' ? 'hojas' : B.bg === 'pdf' ? 'pdf' : 'libre', paper: paper(), ...(B.pdf ? { pdf: B.pdf } : {}), ...(B.rec ? { rec: B.rec } : {}), pages: wbPages(), ...(B.cbg ? { cbg: B.cbg } : {}), ...(B.ask ? { ask: 1 } : {}), items: B.items, view: { x: Math.round(view.x), y: Math.round(view.y), k: +view.k.toFixed(3) }, subjectId: B.subjectId || '', createdAt: B.createdAt || Date.now(), updatedAt: B.updatedAt };
     const size = JSON.stringify(doc).length; if (size > 900000) toast('La pizarra es muy grande: borra algo o crea otra para que se guarde bien.');
-    try { await put('boards/' + id, doc); state.wb.boards[id] = doc; if (toastIt && doc.subjectId && state.subjects[doc.subjectId]) { const lo = state.lib['wb_' + id]; await put('library/wb_' + id, { subjectId: doc.subjectId, kind: 'pizarra', boardId: id, title: doc.title || 'Pizarra', text: '', nItems: doc.items.length, ...(doc.classKey ? { classKey: doc.classKey, classTitle: doc.classTitle || '', classDay: doc.classDay || '' } : {}), createdAt: (lo && lo.createdAt) || Date.now(), updatedAt: doc.updatedAt }); try { renderLib(); renderSubjPage(); } catch (e) {} } st.textContent = 'Guardada ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }); if (toastIt) toast(doc.subjectId && state.subjects[doc.subjectId] ? 'Pizarra guardada en la biblioteca de ' + state.subjects[doc.subjectId].name + '.' : 'Pizarra guardada.'); } catch (e) { st.textContent = 'No se pudo guardar'; }
+    try { await put('boards/' + id, doc); state.wb.boards[id] = doc; if (toastIt && doc.subjectId && state.subjects[doc.subjectId]) { const lo = state.lib['wb_' + id]; await put('library/wb_' + id, { subjectId: doc.subjectId, kind: 'pizarra', boardId: id, title: doc.title || 'Pizarra', text: '', nItems: doc.items.length, ...(doc.classKey ? { classKey: doc.classKey, classTitle: doc.classTitle || '', classDay: doc.classDay || '' } : {}), createdAt: (lo && lo.createdAt) || Date.now(), updatedAt: doc.updatedAt }); try { renderLib(); renderSubjPage(); } catch (e) {} } st.textContent = window.faPending && window.faPending().includes('boards/' + id) ? 'Reintentando guardar…' : 'Guardada ' + new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }); if (toastIt) toast(doc.subjectId && state.subjects[doc.subjectId] ? 'Pizarra guardada en la biblioteca de ' + state.subjects[doc.subjectId].name + '.' : 'Pizarra guardada.'); } catch (e) { st.textContent = 'No se pudo guardar'; }
   }
   const commit = (it) => { snap(); B.items.push({ ...it, id: uid() }); markDirty(); render(); };
   let shapeChip = null, shapeT = 0;
@@ -20185,10 +20186,10 @@ window.ntHubOpen = function (tab) {
         } else if (!c.topic.trim()) { c.busy = ''; c.ctl = null; vConfig(u); toast('Escribe el tema.'); return; }
         else if (c.topic.trim().length > 600) material = c.topic.trim();
         const tree = await aiTree({ title, central, material, topic: material ? '' : c.topic.trim(), det: c.det, extra: c.extra }, (t) => { c.busy = t; const b = $('#mmBusy'); if (b) b.textContent = t; }, c.ctl.signal);
-        if (!tree.ic) tree.ic = '🧠'; const m = newMap(u.sid, { title, layout: c.layout, theme: c.theme, root: tree }); MM.maps[m.id] = m; await saveNow(m); c.busy = ''; c.ctl = null; if (MM.ui === u) openMap(m.id);
+        if (!tree.ic) tree.ic = '🧠'; const m = newMap(u.sid, { title, layout: c.layout, theme: c.theme, root: tree }); MM.maps[m.id] = m; await saveNow(m); c.busy = ''; c.ctl = null; if (MM.ui === u && u.view === 'config' && $('#mmM')) openMap(m.id); else if (window.faNotify) window.faNotify({ kind: 'ai', title: 'Tu mapa mental está listo', msg: m.title || central, ms: 12000, actions: [{ label: 'Abrir', fn: () => { try { window.mmOpen(u.sid, 'list', m.id); } catch (e) {} } }] });
       } catch (e) { c.busy = ''; c.ctl = null; if (MM.ui === u && u.view === 'config') vConfig(u); toast(aiErr(e)); }
     };
-    root.replaceChildren(h('div', { class: 'mm-bar' }, B([ic('back'), ' Atrás'], () => { if (c.ctl) c.ctl.abort(); u.view = 'list'; paint(); }, 'sm'), h('b', { class: 'mm-title', style: 'border:0', text: 'Nuevo mapa mental · ' + subjName(u.sid) })),
+    root.replaceChildren(h('div', { class: 'mm-bar' }, B([ic('back'), ' Atrás'], () => { u.view = 'list'; paint(); }, 'sm'), h('b', { class: 'mm-title', style: 'border:0', text: 'Nuevo mapa mental · ' + subjName(u.sid) })),
       h('div', { class: 'mm-page' }, h('div', { class: 'mm-wrap' },
         h('div', { class: 'mm-sec' }, h('h3', { text: '1 · Qué mapa quieres' }), h('div', { class: 'mm-f' }, h('b', { text: 'Título' }), ti), h('div', { class: 'mm-f' }, h('b', { text: 'Idea central' }), ce)),
         h('div', { class: 'mm-sec' }, h('h3', { text: '2 · Cómo lo creas' }), h('div', { class: 'mm-src' }, srcs), ...body),
@@ -23423,6 +23424,108 @@ tkClash = function (day, start, end, skipId) {
 })();
 
 </script>
+<script id="fa-jvnotify">
+/* Notificaciones superiores con mejor diseño + guardado con reintentos (no se pierde nada si falla un momento) */
+(function () {
+  'use strict';
+  if (window.__faNotify) return; window.__faNotify = true;
+  const css = document.createElement('style'); css.id = 'fa-notify-css';
+  css.textContent = `
+#toast{display:none!important}
+#faNt{position:fixed;left:0;right:0;top:calc(10px + env(safe-area-inset-top,0px));z-index:2147483000;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 12px}
+.fa-nt{pointer-events:auto;position:relative;overflow:hidden;width:min(540px,100%);display:flex;align-items:flex-start;gap:12px;padding:12px 14px 14px 12px;border-radius:18px;color:var(--fg,#111);background:color-mix(in srgb,var(--surface,#fff) 94%,transparent);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px);border:1px solid color-mix(in srgb,var(--nc) 38%,var(--line,#ddd));box-shadow:0 14px 40px rgba(10,20,50,.22),0 2px 8px rgba(10,20,50,.1);animation:faNtIn .42s cubic-bezier(.2,.9,.25,1.1) both;cursor:default}
+.fa-nt.out{animation:faNtOut .26s ease-in both}
+.fa-nt-i{flex:none;width:34px;height:34px;border-radius:12px;display:grid;place-items:center;font-size:18px;color:#fff;background:linear-gradient(135deg,var(--nc),color-mix(in srgb,var(--nc) 60%,#000))}
+.fa-nt-b{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px;padding-top:1px}
+.fa-nt-t{font:700 14.5px/1.25 system-ui,-apple-system,sans-serif;margin:0}
+.fa-nt-m{font:500 13.5px/1.4 system-ui,-apple-system,sans-serif;opacity:.82;margin:0;overflow-wrap:anywhere}
+.fa-nt-a{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.fa-nt-a button{border:0;border-radius:10px;padding:7px 12px;font:700 13px system-ui;cursor:pointer;color:#fff;background:var(--nc);min-height:34px}
+.fa-nt-a button.g{background:transparent;color:var(--fg,#111);border:1px solid var(--line,#ccc)}
+.fa-nt-x{flex:none;border:0;background:transparent;color:inherit;opacity:.5;font:400 22px/1 system-ui;cursor:pointer;padding:0 2px;min-width:28px;min-height:28px}
+.fa-nt-x:hover{opacity:.9}
+.fa-nt-p{position:absolute;left:0;bottom:0;height:3px;background:var(--nc);opacity:.7;transform-origin:left;animation:faNtP linear forwards}
+.fa-nt.k-error{--nc:#e5484d}.fa-nt.k-ok{--nc:#17a673}.fa-nt.k-info{--nc:#3b82f6}.fa-nt.k-ai{--nc:#d79a1c}.fa-nt.k-warn{--nc:#f08a24}
+.fa-nt.k-ai{background:linear-gradient(120deg,color-mix(in srgb,#d79a1c 14%,var(--surface,#fff)),color-mix(in srgb,#8b5cf6 10%,var(--surface,#fff)))}
+.fa-nt.k-ai .fa-nt-i{background:linear-gradient(135deg,#f5b93a,#c9731f 55%,#8b5cf6)}
+@keyframes faNtIn{from{opacity:0;transform:translateY(-22px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes faNtOut{to{opacity:0;transform:translateY(-14px) scale(.97)}}
+@keyframes faNtP{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@media (prefers-reduced-motion:reduce){.fa-nt,.fa-nt.out{animation:none}.fa-nt-p{display:none}}`;
+  document.head.appendChild(css);
+  const host = () => { let h = document.getElementById('faNt'); if (!h) { h = document.createElement('div'); h.id = 'faNt'; h.setAttribute('role', 'region'); h.setAttribute('aria-label', 'Notificaciones'); document.body.appendChild(h); } return h; };
+  const ICON = { error: '!', ok: '✓', info: 'i', ai: '✦', warn: '!' };
+  const TITLE = { error: 'No ha ido bien', ok: 'Hecho', warn: 'Atención' };
+  function kindOf(m) { m = String(m || ''); if (/no se (ha )?pudo|no he podido|no puedo|error|fall[oó]|no se (han|ha) (cargado|guardado)|l[ií]mite|sin permiso|no est[aá] disponible|demasiad|no se encontr/i.test(m)) return 'error'; if (/^espera|sin conexi|aviso|cuidado|ojo/i.test(m)) return 'warn'; if (/guardad|listo|creado|creada|a[nñ]adid|copiad|hecho|descargad|restaurad|enviad|actualizad|aplicad|quitad|pegad|se ha (creado|guardado)/i.test(m)) return 'ok'; return 'info'; }
+  function dismiss(el) { if (!el || el.__gone) return; el.__gone = true; el.classList.add('out'); setTimeout(() => { try { el.remove(); } catch (e) {} }, 260); }
+  function notify(o) {
+    o = typeof o === 'string' ? { msg: o } : (o || {}); const kind = o.kind || kindOf(o.msg), h = host();
+    if (!o.noDedupe) { const dup = Array.from(h.children).find((e) => e.__key === (o.key || (kind + '|' + (o.title || '') + '|' + o.msg))); if (dup) { dup.__bump && dup.__bump(); return dup; } }
+    const el = document.createElement('div'); el.className = 'fa-nt k-' + kind; el.setAttribute('role', kind === 'error' ? 'alert' : 'status'); el.__key = o.key || (kind + '|' + (o.title || '') + '|' + o.msg);
+    const ic = document.createElement('div'); ic.className = 'fa-nt-i'; ic.textContent = o.icon || ICON[kind] || 'i'; ic.setAttribute('aria-hidden', 'true');
+    const b = document.createElement('div'); b.className = 'fa-nt-b'; const tt = o.title || (o.msg && kind !== 'info' && String(o.msg).length > 70 ? TITLE[kind] : ''); if (tt) { const t = document.createElement('p'); t.className = 'fa-nt-t'; t.textContent = tt; b.append(t); }
+    if (o.msg) { const m = document.createElement('p'); m.className = tt ? 'fa-nt-m' : 'fa-nt-t'; m.textContent = o.msg; if (!tt) m.style.fontWeight = '600'; b.append(m); }
+    const acts = (o.actions || (o.action ? [o.action] : [])).filter((a) => a && a.fn);
+    if (acts.length) { const row = document.createElement('div'); row.className = 'fa-nt-a'; acts.forEach((a, i) => { const bt = document.createElement('button'); bt.type = 'button'; bt.textContent = a.label || 'Ver'; if (a.ghost || i > 0) bt.className = 'g'; bt.onclick = () => { dismiss(el); try { a.fn(); } catch (e) {} }; row.append(bt); }); b.append(row); }
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'fa-nt-x'; x.setAttribute('aria-label', 'Cerrar'); x.textContent = '×'; x.onclick = () => dismiss(el);
+    el.append(ic, b, x); const ms = o.sticky ? 0 : (o.ms || (kind === 'error' ? 9000 : acts.length ? 8000 : 4600));
+    let timer = null; const arm = (t) => { clearTimeout(timer); if (!ms) return; let p = el.querySelector('.fa-nt-p'); if (p) p.remove(); p = document.createElement('i'); p.className = 'fa-nt-p'; p.style.animationDuration = t + 'ms'; el.append(p); timer = setTimeout(() => dismiss(el), t); };
+    el.__bump = () => arm(ms); el.onmouseenter = () => { clearTimeout(timer); const p = el.querySelector('.fa-nt-p'); if (p) p.style.animationPlayState = 'paused'; }; el.onmouseleave = () => arm(2500);
+    el.onclick = (e) => { if (e.target === el && !acts.length) dismiss(el); };
+    h.prepend(el); while (h.children.length > 3) dismiss(h.lastElementChild); arm(ms); el.update = (m2) => { const n = el.querySelector('.fa-nt-m,.fa-nt-t:last-of-type'); if (n) n.textContent = m2; }; el.close = () => dismiss(el); return el;
+  }
+  window.faNotify = notify;
+  window.toast = function (msg, act) { return notify({ msg: String(msg == null ? '' : msg), action: act && act.fn ? { label: act.label || 'Deshacer', fn: act.fn } : null }); };
+  try { const old = document.getElementById('toast'); if (old) old.hidden = true; } catch (e) {}
+  /* ---------- guardado con reintentos ---------- */
+  const PEND = {}; let timer = null, shown = null, announced = false; const DELAYS = [1500, 4000, 10000, 25000, 60000];
+  const strip = (d) => { if (d && typeof d === 'object' && 'id' in d && d.id === undefined) { d = { ...d }; delete d.id; } return d; };
+  const nameOf = (p) => { try { if (/^boards\//.test(p)) { const b = state.wb.boards[p.split('/')[1]]; return 'la pizarra «' + ((b && b.title) || 'Pizarra') + '»'; } if (/^library\//.test(p)) { const b = state.lib[p.split('/')[1]]; return '«' + ((b && b.title) || 'el apunte') + '»'; } if (/^subjects\//.test(p)) return 'la asignatura'; if (/^tasks\//.test(p)) return 'la tarea'; if (p === 'plan/current') return 'el plan'; } catch (e) {} return 'tus últimos cambios'; };
+  async function reacquire() { try { if (window.claude && window.claude.use) { const d = await window.claude.use('db'); if (d) { try { db = d; } catch (e) { /* binding no asignable */ } } } } catch (e) {} }
+  async function rawSet(path, data) {
+    if (/^subjects\/[^/]+$/.test(path)) { window.__faRetry = path; try { await put0(path, data); } finally { window.__faRetry = null; } if (PEND[path] && PEND[path].failedAgain) throw new Error('again'); return; }
+    await db.doc(path).set(strip(data));
+  }
+  function schedule(ms) { clearTimeout(timer); timer = setTimeout(flush, ms); }
+  async function flush() {
+    const paths = Object.keys(PEND); if (!paths.length) return; if (navigator.onLine === false) { schedule(8000); return; }
+    for (const p of paths) {
+      const r = PEND[p]; if (!r) continue; r.failedAgain = false;
+      try { if (r.tries >= 1) await reacquire(); await rawSet(p, r.data); delete PEND[p]; }
+      catch (e) { r.tries++; r.last = e; r.failedAgain = false; if (r.tries === 3 && !announced) { announced = true; shown = notify({ kind: 'warn', title: 'Sigo intentando guardar', msg: 'Hay ' + nameOf(p) + ' pendiente de guardar. No cierres la página: lo reintento solo.', sticky: true, key: 'save-pend' }); } }
+    }
+    const left = Object.keys(PEND);
+    if (!left.length) { if (shown) { try { shown.close(); } catch (e) {} shown = null; } if (announced) { announced = false; notify({ kind: 'ok', title: 'Guardado', msg: 'Todo se ha guardado correctamente.', key: 'save-ok' }); } return; }
+    const worst = Math.max(...left.map((q) => PEND[q].tries)); if (worst === DELAYS.length) { notify({ kind: 'error', title: 'No he podido guardar', msg: 'Tu trabajo sigue en pantalla. Pulsa «Reintentar» o vuelve a la pestaña en un momento.', sticky: true, key: 'save-fail', actions: [{ label: 'Reintentar', fn: () => { left.forEach((q) => { PEND[q].tries = 1; }); flush(); } }] }); }
+    schedule(DELAYS[Math.min(worst, DELAYS.length - 1)]);
+  }
+  window.faSaveFail = function (path, data, e) {
+    const code = e && (e.code || e.message || ''); const big = /too.?large|payload|size|exceed|invalid.?argument/i.test(String(code)); const quota = code === 'quota_exceeded';
+    if (window.__faRetry === path && PEND[path]) { PEND[path].failedAgain = true; return; }
+    if (quota) { notify({ kind: 'error', title: 'Almacenamiento lleno', msg: 'No hay espacio para guardar ' + nameOf(path) + '. Borra archivos que no uses.', key: 'quota' }); return; }
+    if (big) { notify({ kind: 'error', title: 'Demasiado grande', msg: nameOf(path).replace(/^./, (c) => c.toUpperCase()) + ' pesa demasiado para guardarse. Quita imágenes o divídelo en dos.', key: 'big' + path }); return; }
+    PEND[path] = { data, tries: PEND[path] ? PEND[path].tries : 0, last: e }; if (!timer || true) schedule(PEND[path].tries ? DELAYS[Math.min(PEND[path].tries, DELAYS.length - 1)] : 1500);
+  };
+  ['online', 'focus', 'pageshow'].forEach((ev) => window.addEventListener(ev, () => { if (Object.keys(PEND).length) { Object.values(PEND).forEach((r) => { r.tries = Math.min(r.tries, 1); }); schedule(400); } }));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Object.keys(PEND).length) schedule(400); });
+  window.addEventListener('beforeunload', (e) => { if (Object.keys(PEND).length) { e.preventDefault(); e.returnValue = ''; } });
+  const p0 = window.put0; if (typeof p0 === 'function') window.put0 = function (path, data) { if (PEND[path] && window.__faRetry !== path) delete PEND[path]; return p0.apply(this, arguments); };
+
+  /* ---------- creaciones con IA: siguen en segundo plano y avisan al terminar ---------- */
+  const g0 = window.generate; if (typeof g0 === 'function') window.generate = async function (kind) { const sid = state.sel; window.__faGen = { sid, kind, at: Date.now() }; try { return await g0.apply(this, arguments); } finally { window.__faGen = null; } };
+  const p1 = window.put0;
+  if (typeof p1 === 'function') window.put0 = async function (path, data) {
+    const r = await p1.apply(this, arguments);
+    try {
+      const m = /^subjects\/([^/]+)\/items\/([a-z]+)$/.exec(path), g = window.__faGen;
+      if (m && g && g.sid === m[1] && g.kind === m[2]) { const here = state.sel === m[1] && state.view === 'asignatura' && (state.tab === m[2]) && !document.hidden; if (!here) { const lb = (typeof RES_LABEL !== 'undefined' && RES_LABEL[m[2]]) || 'recurso', nm = (state.subjects[m[1]] || {}).name || ''; notify({ kind: 'ai', title: 'Tu ' + lb.toLowerCase() + ' está listo', msg: nm, ms: 12000, actions: [{ label: 'Verlo', fn: () => { try { spGo(m[1], 'crear', m[2]); } catch (e) {} } }] }); try { if (document.hidden && window.Notification && Notification.permission === 'granted') new Notification('Tu ' + lb.toLowerCase() + ' está listo', { body: nm }); } catch (e) {} } }
+    } catch (e) {}
+    return r;
+  };
+  window.faPending = () => Object.keys(PEND);
+})();
+
+</script>
 <script id="fa-jvpom">
 /* Jarvis: «ponme 50 min de estudio de X» → ventana de pomodoro con música y bloque elegibles */
 (function () {
@@ -23653,6 +23756,1025 @@ tkClash = function (day, start, end, skipId) {
     const w = function () { const now = performance.now(); ctx = this; args = arguments; if (now - last > 70) { last = now; return f.apply(ctx, args); } if (!pend) pend = setTimeout(() => { pend = 0; last = performance.now(); try { f.apply(ctx, args); } catch (e) {} }, 70 - (now - last)); };
     w.__fx = 1; try { window[nm] = w; } catch (e) {}
   });
+})();
+
+</script>
+<script id="fa-jvback">
+/* Copia de seguridad y restaurar: todo lo de la app en un archivo .json (Ajustes y Jarvis) */
+(function () {
+  'use strict';
+  if (window.__faBackup) return; window.__faBackup = true;
+  const COLS = ['subjects', 'library', 'tasks', 'exams', 'examenes', 'sessions', 'research', 'gendocs', 'genjobs', 'agents', 'recordatorios', 'decks', 'ankidecks', 'mindmaps', 'boards', 'board', 'automations', 'memory', 'skills', 'skillfiles', 'segs', 'music', 'proactive', 'meta', 'habits', 'plan', 'nucleo'];
+  const SUBS = { subjects: ['items', 'nparts'], agents: ['chat'] };
+  const LAST = 'fa_backup_last';
+  const ago = (t) => { const d = Math.floor((Date.now() - t) / 864e5); return d <= 0 ? 'hoy' : d === 1 ? 'ayer' : 'hace ' + d + ' días'; };
+  const lastAt = () => { try { return Number(localStorage.getItem(LAST)) || 0; } catch (e) { return 0; } };
+  const readCol = async (path) => { try { const qs = await db.collection(path).get(); const o = {}; qs.docs.forEach((d) => { const v = d.data(); if (v && typeof v === 'object') o[d.id] = v; }); return o; } catch (e) { return {}; } };
+  async function collect(onProg) {
+    if (!db) throw new Error('los datos no están disponibles en esta vista');
+    const out = {}; let n = 0, i = 0;
+    for (const c of COLS) { onProg && onProg(++i, COLS.length, c); const o = await readCol(c); if (Object.keys(o).length) { out[c] = o; n += Object.keys(o).length; } }
+    for (const parent of Object.keys(SUBS)) for (const id of Object.keys(out[parent] || {})) for (const sub of SUBS[parent]) { const o = await readCol(parent + '/' + id + '/' + sub); if (Object.keys(o).length) { out[parent + '/' + id + '/' + sub] = o; n += Object.keys(o).length; } }
+    return { data: out, n };
+  }
+  async function exportAll() {
+    let dl = null; try { dl = await claude.use('downloads'); } catch (e) {} if (!dl) throw new Error('la descarga no está disponible en esta vista');
+    toast('Preparando la copia…'); const { data, n } = await collect((i, t, c) => { if (i % 8 === 0) toast('Copia: ' + i + '/' + t + ' (' + c + ')'); });
+    const subj = Object.keys(data.subjects || {}).length, lib = Object.keys(data.library || {}).length;
+    const json = JSON.stringify({ app: 'fabrica-de-apuntes', v: 1, at: Date.now(), docs: n, subjects: subj, library: lib, data });
+    const day = new Date().toISOString().slice(0, 10);
+    await dl.save({ filename: 'copia-fabrica-de-apuntes-' + day + '.json', data: new TextEncoder().encode(json) });
+    try { localStorage.setItem(LAST, String(Date.now())); } catch (e) {}
+    toast('Copia guardada: ' + subj + ' asignaturas, ' + n + ' elementos.'); return { n, subj, lib, bytes: json.length };
+  }
+  async function parseFile(f) {
+    if (!f) throw new Error('no hay archivo'); if (f.size > 120 * 1024 * 1024) throw new Error('el archivo es demasiado grande');
+    let j; try { j = JSON.parse(await f.text()); } catch (e) { throw new Error('no es un archivo de copia válido'); }
+    if (!j || j.app !== 'fabrica-de-apuntes' || !j.data || typeof j.data !== 'object') throw new Error('este archivo no es una copia de Fábrica de Apuntes');
+    return j;
+  }
+  async function restore(j, onProg) {
+    const jobs = []; Object.keys(j.data).forEach((c) => { if (!/^[A-Za-z0-9_\/-]+$/.test(c)) return; const o = j.data[c]; Object.keys(o).forEach((id) => { if (/^[^\/]+$/.test(id) && o[id] && typeof o[id] === 'object') jobs.push([c + '/' + id, o[id]]); }); });
+    let done = 0, bad = 0;
+    for (let i = 0; i < jobs.length; i += 15) { await Promise.all(jobs.slice(i, i + 15).map(async ([p, v]) => { try { await put0(p, v); } catch (e) { bad++; } done++; })); onProg && onProg(done, jobs.length); }
+    return { done, bad };
+  }
+  function openRestore() {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json'; inp.style.display = 'none';
+    inp.onchange = async () => {
+      const f = inp.files && inp.files[0]; inp.remove(); if (!f) return;
+      try {
+        const j = await parseFile(f); const when = j.at ? new Date(j.at).toLocaleString('es-ES') : 'fecha desconocida';
+        const wrap = h('div', { id: 'bkOv', role: 'dialog', 'aria-modal': 'true', style: 'position:fixed;inset:0;z-index:2147483000;background:rgba(10,18,40,.6);display:flex;align-items:center;justify-content:center;padding:16px' });
+        const box = h('div', { style: 'background:var(--card,#fff);color:var(--text,#14213d);max-width:460px;width:100%;border-radius:18px;padding:18px;box-shadow:0 20px 60px rgba(0,0,0,.4)' });
+        const msg = h('p', { class: 'small', style: 'opacity:.8', text: 'Combinar: añade y actualiza lo de la copia sin borrar nada de lo que tienes ahora. Lo que tenga el mismo identificador se sustituye por la versión de la copia.' });
+        const go = h('button', { class: 'btn primary', type: 'button', text: 'Restaurar copia' }), no = h('button', { class: 'btn', type: 'button', text: 'Cancelar', onclick: () => wrap.remove() });
+        go.onclick = async () => {
+          go.disabled = true; no.disabled = true; go.textContent = 'Restaurando…';
+          try { const r = await restore(j, (d, t) => { go.textContent = 'Restaurando ' + d + '/' + t; }); wrap.remove(); toast('Restaurado: ' + r.done + ' elementos' + (r.bad ? ' (' + r.bad + ' con error)' : '') + '. Recargando…'); setTimeout(() => { try { location.reload(); } catch (e) {} }, 1600); }
+          catch (e) { toast('No se pudo restaurar: ' + ((e && e.message) || 'error')); wrap.remove(); }
+        };
+        box.append(h('h2', { style: 'margin:0 0 6px;font-size:19px', text: 'Restaurar copia de seguridad' }), h('p', { style: 'margin:0 0 8px', text: 'Copia del ' + when + ': ' + (j.subjects || 0) + ' asignaturas, ' + (j.library || 0) + ' apuntes en la biblioteca y ' + (j.docs || 0) + ' elementos en total.' }), msg,
+          h('p', { class: 'small', style: 'color:#b45309', text: 'Consejo: haz antes una copia de lo actual con «Descargar copia».' }), h('div', { style: 'display:flex;gap:8px;margin-top:14px;justify-content:flex-end' }, no, go));
+        wrap.append(box); document.body.appendChild(wrap);
+      } catch (e) { toast((e && e.message) || 'No se pudo leer la copia.'); }
+    };
+    document.body.appendChild(inp); inp.click();
+  }
+  function card() {
+    const l = lastAt(), st = h('p', { class: 'small', text: l ? 'Última copia: ' + ago(l) + '.' : 'Aún no has hecho ninguna copia.' });
+    const b1 = h('button', { class: 'btn primary', type: 'button', text: 'Descargar copia' }), b2 = h('button', { class: 'btn', type: 'button', text: 'Restaurar copia', onclick: openRestore });
+    b1.onclick = async () => { b1.disabled = true; try { await exportAll(); st.textContent = 'Última copia: hoy.'; } catch (e) { if (!e || e.code !== 'declined') toast('No se pudo hacer la copia: ' + ((e && e.message) || 'error')); } b1.disabled = false; };
+    return h('div', { class: 'card set-list', id: 'bkCard' }, h('div', {}, h('b', { text: 'Copia de seguridad' }), h('p', { class: 'small', text: 'Guarda en un archivo todas tus asignaturas, apuntes, recursos, plan, agentes y ajustes. Los archivos y fotos grandes se quedan en la nube y se enlazan al restaurar.' }), st, h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:8px' }, b1, b2)));
+  }
+  const rs = window.renderSettings;
+  if (typeof rs === 'function') { window.renderSettings = renderSettings = function () { const r = rs.apply(this, arguments); try { const box = document.getElementById('settingsBody'); if (box && !document.getElementById('bkCard')) box.append(card()); } catch (e) {} return r; }; }
+  /* recordatorio semanal */
+  setTimeout(() => { try { const l = lastAt(), k = 'fa_backup_nag'; const nag = Number(localStorage.getItem(k)) || 0; if (Object.keys(state.subjects || {}).length && Date.now() - Math.max(l, 0) > 7 * 864e5 && Date.now() - nag > 864e5) { localStorage.setItem(k, String(Date.now())); toast(l ? 'Hace ' + Math.floor((Date.now() - l) / 864e5) + ' días de tu última copia de seguridad. Ajustes → Copia de seguridad.' : 'Aún no tienes copia de seguridad. Hazla en Ajustes → Copia de seguridad.'); } } catch (e) {} }, 15000);
+  window.faBackup = { exportAll, collect, parseFile, restore, openRestore };
+  /* herramienta de Jarvis */
+  const sch = (p, req) => ({ type: 'object', properties: p, required: req || [] });
+  const tool = { name: 'copia_seguridad', description: 'Copia de seguridad de toda la app. accion="crear": prepara y descarga un archivo con todo (el estudiante confirma el guardado). accion="restaurar": abre el selector para que elija un archivo de copia y confirme (nunca borra lo actual). accion="estado": dice cuándo fue la última copia. Pídelo si el estudiante dice «haz una copia», «guarda todo», «restaura mi copia».',
+    inputSchema: sch({ accion: { type: 'string', enum: ['crear', 'restaurar', 'estado'] } }, ['accion']),
+    execute: async (a) => {
+      const ac = a && a.accion; if (ac === 'estado') { const l = lastAt(); return l ? 'Última copia hecha ' + ago(l) + '.' : 'Todavía no hay ninguna copia hecha desde este dispositivo.'; }
+      if (ac === 'restaurar') { openRestore(); return 'Selector abierto: el estudiante elige su archivo de copia y confirma. No se borra nada de lo actual; dile que puede hacer antes una copia.'; }
+      const r = await exportAll(); return 'Copia creada y guardada: ' + r.subj + ' asignaturas, ' + r.lib + ' apuntes de biblioteca, ' + r.n + ' elementos en total.';
+    } };
+  const b0 = window.jvxBase; window.jvxBase = function () { let all = []; try { all = b0(); } catch (e) { all = []; } return all.filter((x) => x && x.name !== 'copia_seguridad').concat([tool]); };
+  try { const c = AG_TOOLCAT.find((x) => x.key === 'notas'); if (c && !c.names.includes('copia_seguridad')) c.names.push('copia_seguridad'); } catch (e) {}
+  const p0 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p0(tl, text, att, BASE); if (/copia|seguridad|backup|restaur|guarda todo|exporta/.test(String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase())) { const have = new Set(r.map((x) => x.name)); r = r.concat(tl.filter((x) => x.name === 'copia_seguridad' && !have.has(x.name))); } return r; };
+})();
+
+</script>
+<script id="fa-jvtask">
+/* Jarvis crea tareas, entregas, recordatorios y bloques hablando: «el jueves entrego el trabajo de Micro» */
+(function () {
+  'use strict';
+  if (window.__jvTask) return; window.__jvTask = true;
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const sch = (p, req) => ({ type: 'object', properties: p, required: req || [] });
+  const subjOf = (a) => { const id = a.asignatura_id; if (id && state.subjects[id]) return id; const q = norm(a.asignatura).trim(); if (q) { const k = Object.keys(state.subjects).find((x) => { const n = norm(state.subjects[x].name); return n === q || n.includes(q) || q.includes(n); }); if (k) return k; } const j = state.jvx && state.jvx.subj; return j && state.subjects[j] ? j : ''; };
+  const resolveDate = (a) => {
+    let date = /^\d{4}-\d{2}-\d{2}$/.test(a.fecha || '') ? a.fecha : '', time = /^\d{1,2}:\d{2}$/.test(a.hora || '') ? String(a.hora).padStart(5, '0') : '';
+    const cu = String(a.cuando || a.fecha || '').trim();
+    if (!date && cu && typeof window.qaParse === 'function') { try { const p = window.qaParse(' ' + cu + ' '); if (p.date) date = p.date; if (!time && p.time) time = p.time; } catch (e) {} }
+    if (!date && /^manana$|^mañana$/.test(norm(cu))) date = addDaysISO(todayISO(), 1);
+    if (!date && /^hoy$/.test(norm(cu))) date = todayISO();
+    return { date, time };
+  };
+  async function one(a) {
+    const title = String(a.titulo || '').trim().slice(0, 80); if (!title) throw new Error('falta el título');
+    const tipo = ['trabajo', 'entrega', 'recordatorio', 'bloque'].includes(a.tipo) ? a.tipo : 'trabajo', sid = subjOf(a), sj = state.subjects[sid], sname = sj ? sj.name : '';
+    const { date, time } = resolveDate(a); const notes = [];
+    if (tipo === 'recordatorio') {
+      if (typeof window.rmCreate !== 'function') throw new Error('los recordatorios no están disponibles en esta vista');
+      await window.rmCreate({ title, date, time, area: sname }); return 'recordatorio «' + title + '»' + (date ? ' el ' + fmtDay(date) + (time ? ' a las ' + time : '') : ' (sin fecha)');
+    }
+    if (tipo === 'bloque') {
+      const day = date || todayISO(), st = time || '17:00', dur = Math.min(240, Math.max(15, Math.round(Number(a.minutos) || 60))), en = tkEnd(st, dur), cur = (state.plan && state.plan.blocks) || [];
+      await put('plan/current', { ...(state.plan || {}), blocks: cur.concat([{ id: uid(), day, start: st, end: en, subject: sname || 'General', title, kind: 'estudiar', done: false, cal: false, auto: false }]), updatedAt: Date.now() });
+      return 'bloque de estudio «' + title + '» el ' + fmtDay(day) + ' de ' + st + ' a ' + en;
+    }
+    if (!date) throw new Error('no he podido saber la fecha de «' + title + '»: pregúntasela al estudiante');
+    if (date < todayISO()) throw new Error('la fecha de «' + title + '» ya pasó: confirma con el estudiante');
+    const dup = Object.values(state.tasks || {}).find((t) => t && !t.done && norm(t.title) === norm(title) && t.due === date); if (dup) return 'ya existía «' + title + '» el ' + fmtDay(date) + ' (no lo dupliqué)';
+    const id = uid(), nb = Math.min(10, Math.max(0, Math.round(Number(a.bloques_estudio) || 0))), dur = Math.min(240, Math.max(15, Math.round(Number(a.minutos) || 60)));
+    const blocks = nb ? tkAutoPlan({ due: date, total: nb * dur, dur, pref: '17:00', extra: [] }).slice(0, nb) : [];
+    await put('tasks/' + id, { createdAt: Date.now(), done: false, title, due: date, time: time || '', note: String(a.notas || '').slice(0, 300), subjectId: sid || Object.keys(state.subjects)[0] || '', kind: 'trabajo', prio: ['alta', 'media', 'baja'].includes(a.prioridad) ? a.prioridad : 'media', est: nb ? Math.round(nb * dur / 6) / 10 : 0, where: '', link: '', steps: [], weight: null });
+    if (blocks.length) { const cur = (state.plan && state.plan.blocks) || []; await put('plan/current', { ...(state.plan || {}), blocks: cur.concat(blocks.map((b) => ({ id: b.id, day: b.day, start: b.start, end: b.end, subject: sname || 'General', title: title.slice(0, 60) + ' · trabajo', kind: 'estudiar', done: false, auto: false, taskId: id }))), updatedAt: Date.now() }); notes.push(blocks.length + ' bloque/s de estudio en el plan'); }
+    const av = Math.round(Number(a.avisar_dias_antes) || 0);
+    if (av > 0 && av <= 30 && typeof window.rmCreate === 'function') { const d = addDaysISO(date, -av); if (d >= todayISO()) { await window.rmCreate({ title: 'Se acerca: ' + title, date: d, time: '09:00', area: sname }); notes.push('recordatorio ' + av + (av === 1 ? ' día' : ' días') + ' antes'); } }
+    try { renderTasks(); renderHome(); } catch (e) {}
+    return (tipo === 'entrega' ? 'entrega' : 'trabajo') + ' «' + title + '»' + (sname ? ' de ' + sname : '') + ' para el ' + fmtDay(date) + (time ? ' a las ' + time : '') + (notes.length ? ' (+ ' + notes.join(', ') + ')' : '') + (typeof mcp !== 'undefined' && mcp ? ' · se añade también a Google Calendar' : '');
+  }
+  const tool = { name: 'crear_tarea', description: 'Crea tareas, trabajos, entregas, recordatorios o bloques de estudio a partir de lo que dice el estudiante, sin que rellene formularios. Ej.: «el jueves entrego el trabajo de Micro» → tipo=trabajo, cuando="el jueves", asignatura="Micro"; «recuérdame llamar a secretaría mañana a las 10» → tipo=recordatorio; «ponme 2 horas de repaso el sábado» → tipo=bloque. Acepta varias a la vez en tareas[]. Entiende fechas en lenguaje natural (hoy, mañana, el jueves, el 25, en 3 días); si das fecha en AAAA-MM-DD úsala. Las entregas se sincronizan con Google Calendar si está conectado. Con avisar_dias_antes crea además un recordatorio previo; con bloques_estudio reserva sesiones en el plan. Si la fecha no está clara, pregúntala. Después di en una frase qué creaste.',
+    inputSchema: sch({ titulo: { type: 'string' }, tipo: { type: 'string', enum: ['trabajo', 'entrega', 'recordatorio', 'bloque'] }, cuando: { type: 'string', description: 'fecha/hora en lenguaje natural: «el jueves», «mañana a las 10», «el 25 de noviembre»' }, fecha: { type: 'string', description: 'AAAA-MM-DD si ya la sabes' }, hora: { type: 'string', description: 'HH:MM' }, asignatura: { type: 'string' }, asignatura_id: { type: 'string' }, minutos: { type: 'number', description: 'duración de bloque (por defecto 60)' }, bloques_estudio: { type: 'number', description: 'sesiones de estudio a reservar antes de la entrega' }, avisar_dias_antes: { type: 'number' }, prioridad: { type: 'string', enum: ['alta', 'media', 'baja'] }, notas: { type: 'string' },
+      tareas: { type: 'array', description: 'varias tareas a la vez, cada una con los mismos campos', items: { type: 'object', properties: { titulo: { type: 'string' }, tipo: { type: 'string' }, cuando: { type: 'string' }, fecha: { type: 'string' }, hora: { type: 'string' }, asignatura: { type: 'string' }, asignatura_id: { type: 'string' }, minutos: { type: 'number' }, bloques_estudio: { type: 'number' }, avisar_dias_antes: { type: 'number' }, prioridad: { type: 'string' }, notas: { type: 'string' } } } } }),
+    execute: async (a) => {
+      a = a || {}; const list = Array.isArray(a.tareas) && a.tareas.length ? a.tareas.slice(0, 12) : [a], ok = [], bad = [];
+      for (const t of list) { try { ok.push(await one(t)); } catch (e) { bad.push((t && t.titulo ? '«' + t.titulo + '»: ' : '') + ((e && e.message) || 'error')); } }
+      if (!ok.length) throw new Error(bad.join('; '));
+      return 'Creado: ' + ok.join('; ') + '.' + (bad.length ? ' NO se pudo: ' + bad.join('; ') + '.' : '') + ' Confirma en una frase qué has creado y su fecha.';
+    } };
+  const b0 = window.jvxBase; window.jvxBase = function () { let all = []; try { all = b0(); } catch (e) { all = []; } return all.filter((x) => x && x.name !== 'crear_tarea').concat([tool]); };
+  try { const c = AG_TOOLCAT.find((x) => x.key === 'entregas'); if (c && !c.names.includes('crear_tarea')) c.names.push('crear_tarea'); } catch (e) {}
+  try { if (Array.isArray(JV_CORE_NAMES) && !JV_CORE_NAMES.includes('crear_tarea')) JV_CORE_NAMES.push('crear_tarea'); } catch (e) {}
+  try { if (Array.isArray(NC_CORE) && !NC_CORE.includes('crear_tarea')) NC_CORE.push('crear_tarea'); } catch (e) {}
+  const p0 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p0(tl, text, att, BASE); if (/entreg|trabajo|tarea|recuerd|avisame|apunta|record|mañana|manana|hoy|lunes|martes|miercoles|jueves|viernes|sabado|domingo|fecha|plazo|hacer|hay que/.test(norm(text))) { const have = new Set(r.map((x) => x.name)); r = r.concat(tl.filter((x) => x.name === 'crear_tarea' && !have.has(x.name))); } return r; };
+  const h0 = window.jvxHint; window.jvxHint = function () { return h0() + '\n\nTAREAS HABLANDO: si el estudiante dice algo como «el jueves entrego el trabajo de Micro», «recuérdame…», «apúntame…», «tengo que entregar X el 25», usa crear_tarea (varias a la vez con tareas[]) con cuando en lenguaje natural; no le pidas fecha si ya la dijo. Pregunta solo lo que falte (fecha o asignatura).'; };
+})();
+
+</script>
+<script id="fa-jvesqwz">
+/* Asistente de configuración del esquema: sale nada más pulsar «Generar esquema» (y desde Jarvis) + colores editables */
+(function () {
+  'use strict';
+  if (window.__esqWz) return; window.__esqWz = true;
+  const KEY = 'fa_esqwz_v1';
+  const TEMAS = { clasico: ['Clásico', ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7'], null], oceano: ['Océano', ['#0e7490', '#0891b2', '#2563eb', '#4f46e5'], 'rgba(14,116,144,.14)'], bosque: ['Bosque', ['#166534', '#16a34a', '#65a30d', '#0f766e'], 'rgba(22,101,52,.14)'], atardecer: ['Atardecer', ['#c2410c', '#e11d48', '#d97706', '#9333ea'], 'rgba(194,65,12,.14)'], mono: ['Sobrio', ['#111827', '#4b5563', '#6b7280', '#9ca3af'], 'rgba(17,24,39,.1)'], vivo: ['Vivo', ['#db2777', '#7c3aed', '#0ea5e9', '#f97316'], 'rgba(219,39,119,.13)'] };
+  const css = document.createElement('style'); css.id = 'fa-esqwz-css';
+  css.textContent = Object.entries(TEMAS).filter(([k, t]) => t[2]).map(([k, t]) => '[data-eth="' + k + '"]{--blue:' + t[1][0] + ';--green:' + t[1][1] + ';--orange:' + t[1][2] + ';--purple:' + t[1][3] + ';--blue-bg:' + t[2] + '}').join('\n') +
+    '\n.ew-ov{z-index:2147482000}.ew-chk{display:flex;gap:10px;align-items:flex-start;font-size:14px}.ew-chk input{margin-top:3px;width:18px;height:18px;flex:none}' +
+    '.ew-sum{font-size:13px;opacity:.8;line-height:1.5}.ew-th{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}@media(min-width:560px){.ew-th{grid-template-columns:repeat(6,1fr)}}' +
+    '.ew-th button{border:1.5px solid var(--line);border-radius:12px;padding:8px;background:var(--bg);color:var(--fg);cursor:pointer;font:600 12.5px system-ui;display:flex;flex-direction:column;gap:6px;align-items:stretch}.ew-th button[aria-pressed=true]{border-color:var(--g2,#2f6bff);box-shadow:0 0 0 2px color-mix(in srgb,var(--g2,#2f6bff) 30%,transparent)}' +
+    '.ew-sw{display:flex;gap:3px;height:22px}.ew-sw i{flex:1;border-radius:6px}.ew-t3{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.ew-t3 .mm-cd{min-height:84px}.ew-t3 .mm-cd small{font:500 12px system-ui;opacity:.75}.ew-t3 .esq-ic{width:44px;height:30px;display:block;color:var(--g2,#2f6bff)}.ew-t3 .esq-ic svg{width:100%;height:100%}' +
+    '.ew-sub{font-size:12.5px;opacity:.75;margin:-6px 0 0}.ew-row{display:flex;flex-direction:column;gap:6px}.ew-go{min-height:50px;font-size:16px}';
+  document.head.appendChild(css);
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } };
+  const saveP = (c) => { try { localStorage.setItem(KEY, JSON.stringify({ tipo: c.tipo, det: c.det, depth: c.depth, amount: c.amount, words: c.words, emph: Array.from(c.emph), key: c.key, tone: c.tone, tema: c.tema, fmt: c.fmt })); } catch (e) {} };
+  const EMPH = [['definiciones', 'Definiciones'], ['formulas', 'Fórmulas y cifras'], ['ejemplos', 'Ejemplos'], ['fechas', 'Fechas y datos'], ['autores', 'Nombres y autores'], ['proscontras', 'Ventajas y desventajas'], ['causas', 'Causas y consecuencias'], ['clasif', 'Clasificaciones']];
+  const EMPH_TXT = { definiciones: 'definiciones', formulas: 'fórmulas y cifras', ejemplos: 'ejemplos', fechas: 'fechas y datos', autores: 'nombres propios y autores', proscontras: 'ventajas y desventajas', causas: 'causas y consecuencias', clasif: 'clasificaciones y tipos' };
+  function compose(c) {
+    const b = [];
+    if (c.title.trim()) b.push('Título del esquema: «' + c.title.trim().slice(0, 100) + '».');
+    if (c.focus.trim()) b.push('Céntrate solo en: ' + c.focus.trim().slice(0, 200) + '.');
+    if (c.depth !== 'auto') b.push('Profundidad: como máximo ' + c.depth + ' niveles de ramificación (sin contar el título).');
+    if (c.amount === 'pocas') b.push('Pocas ideas por rama (2 o 3), agrupa y sintetiza.'); else if (c.amount === 'muchas') b.push('Muchas ideas por rama: desarrolla cada punto con sus matices.');
+    if (c.words === 'claves') b.push('Redacta cada recuadro con palabras clave o frases de 6 palabras como máximo.'); else if (c.words === 'completas') b.push('Redacta cada recuadro como frase completa y clara.');
+    if (c.emph.size) b.push('Destaca y no omitas: ' + Array.from(c.emph).map((k) => EMPH_TXT[k]).join(', ') + '.');
+    if (!c.key) b.push('No marques ideas clave: pon "k":false en todos los nodos.');
+    if (c.tone === 'sencillo') b.push('Lenguaje sencillo, sin tecnicismos innecesarios.'); else if (c.tone === 'tecnico') b.push('Lenguaje técnico y preciso, con la terminología exacta de los apuntes.');
+    if (c.extra.trim()) b.push(c.extra.trim().slice(0, 600));
+    return b.join(' ');
+  }
+  function summary(c) {
+    const t = { auto: 'tipo automático', llaves: 'llaves', flechas: 'flechas', radial: 'mapa mental', conceptual: 'mapa conceptual', desarrollo: 'desarrollo', flujo: 'diagrama de flujo' }[c.tipo];
+    return [t, { esencial: 'solo lo esencial', equilibrado: 'detalle equilibrado', completo: 'detalle completo' }[c.det], c.depth !== 'auto' ? c.depth + ' niveles' : '', c.amount !== 'normal' ? (c.amount === 'pocas' ? 'pocas ideas' : 'muchas ideas') : '', c.emph.size ? 'destaca ' + c.emph.size : '', TEMAS[c.tema][0]].filter(Boolean).join(' · ');
+  }
+  function openWizard(o) {
+    o = o || {}; const mode = o.mode || 'app'; let sid = o.sid && state.subjects[o.sid] ? o.sid : (mode === 'app' ? state.sel : '');
+    const old = document.getElementById('esqWz'); if (old) old.remove();
+    const P = load(), prev = (state.genOpt && state.genOpt.esquema) || {};
+    const c = { title: '', focus: o.tema || '', source: 'notes', sel: new Set(), text: '', tipo: o.tipo || P.tipo || 'auto', det: o.det || P.det || 'equilibrado', depth: P.depth || 'auto', amount: P.amount || 'normal', words: P.words || 'auto', emph: new Set(P.emph || []), key: P.key !== false, tone: P.tone || '', tema: TEMAS[P.tema] ? P.tema : 'clasico', fmt: P.fmt || prev.fmt || 'app', extra: o.extra || '', exec: 'aqui', busy: false };
+    const ov = h('div', { class: 'mm-ov ew-ov', id: 'esqWz', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Configurar esquema' }); document.body.append(ov);
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', onKey, true);
+    const seg = (cur, list, on) => h('div', { class: 'mm-seg' }, list.map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(cur() === v), onclick: () => { on(v); paint(); } }, l)));
+    const jarvisPhotos = () => ((state.jvx && state.jvx.photos) || []).length + Object.keys((state.jvx && state.jvx.docs) || {}).length;
+    function paint() {
+      const keepScroll = (ov.querySelector('.mm-page') || {}).scrollTop || 0;
+      const s = sid && state.subjects[sid]; ov.replaceChildren();
+      const bar = h('div', { class: 'mm-bar' }, h('button', { class: 'btn sm', type: 'button', onclick: close }, '‹ Atrás'), h('b', { class: 'mm-title', style: 'border:0', text: 'Nuevo esquema' + (s ? ' · ' + s.name : '') }));
+      const sec = (t, ...k) => h('div', { class: 'mm-sec' }, h('h3', { text: t }), ...k);
+      const f = (l, el, hint) => h('div', { class: 'mm-f' }, h('b', { text: l }), el, hint ? h('p', { class: 'ew-sub', text: hint }) : null);
+      const subjSel = mode === 'jarvis' && !o.sid ? f('Asignatura', (() => { const e = h('select', { 'aria-label': 'Asignatura', onchange: () => { sid = e.value; c.sel = new Set(); paint(); } }, h('option', { value: '', text: 'Elige una asignatura…' }), Object.keys(state.subjects).map((k) => h('option', { value: k, text: state.subjects[k].name }))); e.value = sid || ''; return e; })()) : null;
+      const ti = h('input', { type: 'text', maxlength: 100, placeholder: 'Ej.: Tema 3 · La demanda (si lo dejas vacío, lo pone la IA)', value: c.title, oninput: (e) => { c.title = e.target.value; } });
+      const fo = h('input', { type: 'text', maxlength: 200, placeholder: 'Ej.: solo la parte de costes, o los apartados 2 y 3', value: c.focus, oninput: (e) => { c.focus = e.target.value; } });
+      const srcs = [['notes', 'Mis apuntes', mode === 'jarvis' ? 'Los de la asignatura' : 'Elige cuáles'], ['text', 'Un tema o texto', 'Escríbelo o pégalo']]; if (mode === 'jarvis') srcs.push(['chat', 'Lo que adjunté', jarvisPhotos() ? jarvisPhotos() + ' en el chat' : 'Fotos o archivos']);
+      const body = [];
+      if (c.source === 'notes' && mode === 'app' && sid) { try { const src = resSources(sid); if (src.length > 1) { const sel = resPickSet(sid, src); c.sel = sel; body.push(srcPicker(src, sel, (x) => { c.sel = x; }, { title: '¿De qué apuntes?' })); } else if (src.length === 1) body.push(h('p', { class: 'small' }, 'Se usará: ', h('b', { text: src[0].title }))); else body.push(h('p', { class: 'small', text: 'Esta asignatura aún no tiene apuntes: escribe un tema o pega texto.' })); } catch (e) {} }
+      if (c.source === 'text') body.push(h('textarea', { class: 'mm-ta', rows: 5, maxlength: 6000, placeholder: 'Escribe el tema o pega aquí el texto del que quieres el esquema', oninput: (e) => { c.text = e.target.value; } }, c.text));
+      if (c.source === 'chat') body.push(h('p', { class: 'small', text: jarvisPhotos() ? 'Usaré las fotos y archivos que has adjuntado en el chat.' : 'Aún no has adjuntado nada: ciérralo, adjunta fotos o archivos en el chat y vuelve a pedir el esquema.' }));
+      const tipos = [['auto', 'Que elija la IA', 'Según tus apuntes'], ['llaves', 'Llaves', 'Cuadro sinóptico'], ['flechas', 'Flechas', 'Jerarquía y causas'], ['radial', 'Mapa mental', 'Ramas desde el centro'], ['conceptual', 'Mapa conceptual', 'Conceptos y enlaces'], ['desarrollo', 'Desarrollo', 'Apartados 1, 1.1…'], ['flujo', 'Diagrama de flujo', 'Proceso paso a paso']];
+      const cards = h('div', { class: 'ew-t3', role: 'radiogroup', 'aria-label': 'Tipo de esquema' }, tipos.map(([k, t, d]) => h('button', { type: 'button', class: 'mm-cd', role: 'radio', 'aria-checked': String(c.tipo === k), 'aria-pressed': String(c.tipo === k), onclick: () => { c.tipo = k; paint(); } }, typeof esqIcon === 'function' ? esqIcon(k) : null, h('span', { text: t }), h('small', { text: d }))));
+      const emph = h('div', { class: 'mm-seg' }, EMPH.map(([k, l]) => h('button', { type: 'button', 'aria-pressed': String(c.emph.has(k)), onclick: () => { if (c.emph.has(k)) c.emph.delete(k); else c.emph.add(k); paint(); } }, l)));
+      const th = h('div', { class: 'ew-th', role: 'radiogroup', 'aria-label': 'Colores' }, Object.entries(TEMAS).map(([k, t]) => h('button', { type: 'button', 'aria-pressed': String(c.tema === k), onclick: () => { c.tema = k; paint(); } }, h('span', { class: 'ew-sw' }, t[1].map((x) => h('i', { style: 'background:' + x }))), h('span', { text: t[0] }))));
+      const key = h('label', { class: 'ew-chk' }, h('input', { type: 'checkbox', checked: c.key ? true : false, onchange: (e) => { c.key = e.target.checked; } }), h('span', { text: 'Marcar en amarillo las ideas clave para el examen' }));
+      const fmt = mode === 'app' ? f('Cómo lo quieres recibir', (() => { const e = h('select', { 'aria-label': 'Formato de entrega', onchange: () => { c.fmt = e.value; } }, [['app', 'Verlo en la app (editable)'], ['pdf', 'Además en PDF'], ['md', 'Además en Markdown (.md)'], ['doc', 'Además en Word (.doc)']].map(([v, l]) => h('option', { value: v, text: l }))); e.value = c.fmt; return e; })()) : f('¿Quién lo hace?', seg(() => c.exec, [['aqui', 'Jarvis aquí, en el chat'], ['asignatura', 'En segundo plano en la asignatura']], (v) => { c.exec = v; }));
+      const ex = h('textarea', { class: 'mm-ta', rows: 3, maxlength: 600, placeholder: 'Algo más que quieras (opcional). Ej.: «relaciona cada concepto con su ejemplo», «añade una rama de errores típicos»', oninput: (e) => { c.extra = e.target.value; } }, c.extra);
+      const go = h('button', { class: 'btn primary ew-go', type: 'button', onclick: finish }, '✨ Crear esquema');
+      ov.append(bar, h('div', { class: 'mm-page' }, h('div', { class: 'mm-wrap' },
+        sec('1 · Qué esquema quieres', subjSel, f('Título', ti), f('Enfoque (opcional)', fo, '¿Solo una parte de los apuntes? Dilo aquí.')),
+        sec('2 · De qué lo creas', h('div', { class: 'mm-src' }, srcs.map(([k, t, d]) => h('button', { type: 'button', 'aria-pressed': String(c.source === k), onclick: () => { c.source = k; paint(); } }, h('b', { text: t }), h('span', { text: d })))), ...body),
+        sec('3 · Tipo de esquema', cards, h('p', { class: 'ew-sub', text: 'Después podrás cambiar la vista de llaves, flechas, mapa mental, conceptual o desarrollo con un toque, sin volver a pagar a la IA.' })),
+        sec('4 · Detalle y tamaño', f('Nivel de detalle', seg(() => c.det, [['esencial', 'Esencial'], ['equilibrado', 'Equilibrado'], ['completo', 'Completo']], (v) => { c.det = v; })), f('Profundidad', seg(() => c.depth, [['auto', 'Automática'], ['2', '2 niveles'], ['3', '3 niveles'], ['4', '4 niveles']], (v) => { c.depth = v; })), f('Ideas por rama', seg(() => c.amount, [['pocas', 'Pocas'], ['normal', 'Normal'], ['muchas', 'Muchas']], (v) => { c.amount = v; })), f('Redacción', seg(() => c.words, [['auto', 'Como mejor vaya'], ['claves', 'Palabras clave'], ['completas', 'Frases completas']], (v) => { c.words = v; }))),
+        sec('5 · Qué destacar', f('No te dejes (elige varias)', emph), key, f('Lenguaje', seg(() => c.tone, [['', 'Como los apuntes'], ['sencillo', 'Sencillo'], ['tecnico', 'Técnico']], (v) => { c.tone = v; }))),
+        sec('6 · Colores', th),
+        sec('7 · Entrega y extras', fmt, ex),
+        h('p', { class: 'ew-sum', text: 'Resumen: ' + summary(c) + '.' }), go,
+        h('p', { class: 'small', text: 'Después podrás editarlo siempre: toca cualquier recuadro para cambiar el texto, añadir ideas, moverlas, subrayarlas o marcarlas; también cambiar el tipo de vista y los colores.' }))));
+      const pg = ov.querySelector('.mm-page'); if (pg) pg.scrollTop = keepScroll;
+    }
+    function finish() {
+      if (!sid) { toast('Elige primero la asignatura.'); return; }
+      if (c.source === 'text' && c.text.trim().length < 20) { toast('Escribe o pega el texto del esquema.'); return; }
+      if (mode === 'app' && c.source === 'notes') { try { const src = resSources(sid); if (src.length > 1 && !c.sel.size) { toast('Marca al menos uno de los apuntes.'); return; } } catch (e) {} }
+      saveP(c); const ask = compose(c); window.__esqCfg = { tema: c.tema, title: c.title.trim(), at: Date.now() };
+      if (mode === 'jarvis') { close(); const parts = ['tipo_esquema=' + (c.tipo === 'auto' ? '(que elija la IA)' : c.tipo), 'detalle=' + c.det]; const s = state.subjects[sid];
+        const msg = 'Configuración para el esquema de «' + s.name + '» (asignatura_id=' + sid + '): ' + parts.join(', ') + (c.focus.trim() ? '; tema="' + c.focus.trim() + '"' : '') + (ask ? '; instrucciones: ' + ask : '') + '; ejecucion=' + c.exec + '. Material: ' + (c.source === 'text' ? 'este texto (pásalo en texto=): """' + c.text.trim().slice(0, 5000) + '"""' : c.source === 'chat' ? 'las fotos y archivos adjuntos del chat (fotos=true)' : 'los apuntes de la asignatura') + '. Créalo ya con crear_recurso tipo=esquema pasando ejecucion=' + c.exec + ', sin volver a preguntar.';
+        try { ncAsk(msg); } catch (e) { toast('No se pudo enviar.'); } return; }
+      state.genOpt.esquema = { ...(state.genOpt.esquema || {}), ask, fmt: c.fmt, tipo: c.tipo, det: c.det };
+      close(); state.tab = 'esquema'; try { renderTabs(); renderPanel(); } catch (e) {}
+      const picks = c.source === 'notes' ? Array.from(c.sel) : undefined; if (c.source === 'notes') { state.resPick[sid] = picks || []; }
+      window.__esqSkip = true; let p; try { p = c.source === 'text' ? generate('esquema', undefined, undefined, { text: c.text.trim(), names: ['Texto escrito'] }) : (picks && picks.length ? generate('esquema', picks) : generate('esquema')); } catch (e) { window.__esqSkip = false; toast('No se pudo empezar.'); return; }
+      Promise.resolve(p).finally(() => { window.__esqSkip = false; });
+    }
+    paint(); return c;
+  }
+  window.esqWizard = openWizard;
+  /* 1) al pulsar «Generar esquema» se abre el asistente */
+  const gp0 = window.genPick;
+  window.genPick = function (kind, mode) { if (kind === 'esquema' && mode !== 'chat' && !window.__esqSkip && state.sel) { openWizard({ mode: 'app', sid: state.sel }); return; } return gp0.apply(this, arguments); };
+  /* el cuadro de opciones de la pestaña pasa a ser un aviso: todo se configura en el asistente */
+  const go0 = window.genOptsBox;
+  window.genOptsBox = function (kind) { if (kind !== 'esquema') return go0.apply(this, arguments); return h('div', { class: 'gen-opts' }, h('p', { class: 'small', text: 'Al pulsar el botón te pregunto cómo lo quieres: tipo de esquema, detalle, profundidad, qué destacar, colores…' })); };
+  /* 2) el esquema creado lleva el color y el título elegidos */
+  const me0 = window.makeEsquema;
+  window.makeEsquema = async function () {
+    const r = await me0.apply(this, arguments); const cfg = window.__esqCfg;
+    if (cfg && Date.now() - cfg.at < 600000 && r && r.visual) { window.__esqCfg = null; r.visual.tema = cfg.tema; (r.visual.paneles || []).forEach((p) => { p.tema = cfg.tema; }); if (cfg.title && r.visual.paneles && r.visual.paneles[0]) r.visual.paneles[0].titulo = cfg.title.slice(0, 140); try { r.text = esqText(r.visual); } catch (e) {} }
+    return r;
+  };
+  const ed0 = window.esqDiagram;
+  window.esqDiagram = function (p, tipo) { const d = ed0.apply(this, arguments); try { const k = p && p.tema; if (d && d.setAttribute && k && k !== 'clasico' && TEMAS[k]) d.setAttribute('data-eth', k); } catch (e) {} return d; };
+  /* 3) cambiar colores cuando quieras (edición fácil) */
+  const ev0 = window.esqView;
+  window.esqView = function (item) {
+    const box = ev0.apply(this, arguments);
+    try {
+      if (!item || !item.visual || !box.classList || !box.classList.contains('esq')) return box;
+      const cur = (item.visual.tema && TEMAS[item.visual.tema]) ? item.visual.tema : 'clasico';
+      const row = h('div', { class: 'seg esq-seg', role: 'group', 'aria-label': 'Colores del esquema' }, Object.entries(TEMAS).map(([k, t]) => h('button', { type: 'button', 'aria-pressed': String(cur === k), title: t[0], onclick: () => { const cc = esqCur(); if (!cc) return; cc.v.tema = k; (cc.v.paneles || []).forEach((p) => { p.tema = k; }); esqSave(); state.esq.view = {}; renderPanel(); } }, h('span', { style: 'display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;background:' + t[1][0] }), t[0])));
+      const after = box.querySelector('.esq-seg'); const lbl = h('p', { class: 'small', text: 'Colores' });
+      if (after && after.parentNode) { after.parentNode.insertBefore(lbl, after.nextSibling); after.parentNode.insertBefore(row, lbl.nextSibling); } else box.insertBefore(row, box.children[2] || null);
+    } catch (e) {}
+    return box;
+  };
+  /* 4) Jarvis: el test de configuración del esquema es este asistente */
+  const b0 = window.jvxBase;
+  window.jvxBase = function () { let all = []; try { all = b0(); } catch (e) { all = []; } return all.map((t) => { if (!t || t.name !== 'preguntar_configuracion' || t.__wz) return t; const ex = t.execute; return { ...t, __wz: 1, execute: async (a) => { if (a && a.recurso === 'esquema') { const c = a.conocido || {}; const sid = (a.asignatura_id && state.subjects[a.asignatura_id]) ? a.asignatura_id : ((state.jvx && state.jvx.subj && state.subjects[state.jvx.subj]) ? state.jvx.subj : ''); openWizard({ mode: 'jarvis', sid, tema: c.tema || '', tipo: ESQ_TYPES[c.tipo_esquema] ? c.tipo_esquema : '', det: ['esencial', 'equilibrado', 'completo'].includes(c.detalle) ? c.detalle : '' }); return 'Se ha abierto la ventana de configuración del esquema (tipo, detalle, qué destacar, colores…). Responde SOLO con una frase corta diciendo que la rellene y pulse «Crear esquema»; no crees nada todavía y espera su mensaje «Configuración para el esquema…».'; } return ex(a); } }; }); };
+})();
+
+</script>
+<script id="fa-jvdeck">
+/* Estudio de presentaciones: motor (temas, maquetación, render en canvas y exportación PPTX/PDF) */
+(function () {
+  'use strict';
+  if (window.dkStudio) return;
+  const W = 1280, H = 720, M = 80;
+  const FONT = { serif: 'Georgia, "Times New Roman", serif', sans: '-apple-system, "Segoe UI", Helvetica, Arial, sans-serif' };
+  const PF = { serif: 'Georgia', sans: 'Calibri' };
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const hex2 = (c) => { c = String(c || '#000').replace('#', ''); if (c.length === 3) c = c.split('').map((x) => x + x).join(''); return [parseInt(c.slice(0, 2), 16) || 0, parseInt(c.slice(2, 4), 16) || 0, parseInt(c.slice(4, 6), 16) || 0]; };
+  const toHex = (r) => '#' + r.map((v) => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
+  const mix = (a, b, t) => { const x = hex2(a), y = hex2(b); return toHex(x.map((v, i) => v + (y[i] - v) * t)); };
+  const lum = (c) => { const [r, g, b] = hex2(c); return (0.299 * r + 0.587 * g + 0.114 * b) / 255; };
+  const THEMES = {
+    ejecutivo: ['Ejecutivo', '#13233f', '#f4f2ed', '#c9962b', '#2f5d8a', ['#244a73', '#c9962b', '#7d9bb8', '#b8432f', '#2a8a68']],
+    editorial: ['Editorial', '#1f1f1f', '#fbf8f2', '#b3412b', '#2b5d6b', ['#2b5d6b', '#b3412b', '#c9a227', '#6b7280', '#3f7d58']],
+    oceano: ['Océano', '#0b3a4a', '#f1f8fa', '#0e9aa7', '#2563eb', ['#0e7490', '#2563eb', '#38bdf8', '#f59e0b', '#14b8a6']],
+    bosque: ['Bosque', '#123524', '#f3f7f2', '#2f8f5b', '#b7791f', ['#166534', '#b7791f', '#65a30d', '#0f766e', '#a16207']],
+    atardecer: ['Atardecer', '#3b1f3a', '#fff6f0', '#ef6c3a', '#c2417a', ['#c2417a', '#ef6c3a', '#7c3aed', '#f59e0b', '#0ea5a4']],
+    pizarra: ['Pizarra', '#222831', '#f5f5f5', '#00a8a8', '#6b7280', ['#393e46', '#00a8a8', '#9ca3af', '#f59e0b', '#ef4444']],
+    vivo: ['Vivo', '#2b1a6b', '#fbfaff', '#7c3aed', '#f59e0b', ['#7c3aed', '#f59e0b', '#ec4899', '#06b6d4', '#22c55e']]
+  };
+  function themeOf(d) {
+    const t = (d && d.theme) || {}; let k = t.key && THEMES[t.key] ? t.key : 'ejecutivo', row = THEMES[k], dark = row[1], light = row[2], acc = row[3], acc2 = row[4], ch = row[5].slice();
+    if (t.key === 'custom') { dark = t.primary || '#1d3557'; acc = t.accent || '#e9a23b'; light = mix(dark, '#ffffff', 0.94); acc2 = mix(dark, '#ffffff', 0.35); ch = [dark, acc, acc2, mix(acc, '#000000', 0.25), mix(dark, acc, 0.5)]; }
+    const fk = t.font || 'elegante', hf = fk === 'moderna' ? 'sans' : 'serif', bf = fk === 'clasica' ? 'serif' : 'sans';
+    const coverDark = t.cover !== 'clara';
+    return { key: k, dark, light, ink: dark, text: mix(dark, '#000000', 0.25), muted: mix(dark, '#ffffff', 0.4), accent: acc, accent2: acc2, accentTx: lum(acc) > 0.62 ? mix(acc, '#000000', 0.45) : acc, card: '#ffffff', line: mix(light, dark, 0.14), band: mix(light, dark, 0.07), ok: '#1f7a5c', bad: '#b8432f', okbg: '#dbeee8', badbg: '#f6dcd5', infobg: mix(light, acc, 0.14), chart: ch, hf, bf, coverDark };
+  }
+  /* ---------- medición y ajuste de texto ---------- */
+  const mc = document.createElement('canvas').getContext('2d');
+  const setF = (size, font, bold) => { mc.font = (bold ? '700 ' : '400 ') + size + 'px ' + FONT[font]; };
+  function wrap(s, size, font, bold, w) {
+    setF(size, font, bold); const out = [];
+    String(s == null ? '' : s).split('\n').forEach((par) => {
+      const words = par.split(/\s+/).filter(Boolean); if (!words.length) { out.push(''); return; }
+      let cur = ''; words.forEach((wd) => { const t = cur ? cur + ' ' + wd : wd; if (!cur || mc.measureText(t).width <= w) cur = t; else { out.push(cur); cur = wd; } }); out.push(cur);
+    });
+    return out;
+  }
+  function fit(s, o) { let size = o.size || 20; const min = o.min || 11, lh = o.lh || 1.25; for (;;) { const ls = wrap(o.caps ? String(s).toUpperCase() : s, size, o.font || 'sans', o.bold, o.w); const hh = ls.length * size * lh; if (hh <= o.h + 0.5 || size <= min) return { size, lines: ls, h: hh }; size -= 1; } }
+  const num = (v) => { const n = Number(v); if (!isFinite(n)) return String(v == null ? '' : v); const a = Math.abs(n); return n.toLocaleString('es-ES', { maximumFractionDigits: a >= 100 ? 0 : a >= 10 ? 1 : 2 }); };
+  const S = (v, n) => String(v == null ? '' : v).replace(/\s+\n/g, '\n').trim().slice(0, n || 400);
+  /* ---------- construcción de la escena ---------- */
+  function sceneOf(sl, i, n, deck, IM) {
+    const th = themeOf(deck), items = [], L = sl.layout || 'puntos';
+    const dark = L === 'portada' ? th.coverDark : (L === 'seccion' || L === 'destacado');
+    const bg = dark ? th.dark : th.light;
+    const fg = dark ? '#ffffff' : th.ink, sub = dark ? mix(th.dark, '#ffffff', 0.78) : th.muted, body = dark ? mix(th.dark, '#ffffff', 0.85) : th.text, cardBg = dark ? mix(th.dark, '#ffffff', 0.09) : th.card, cardLn = dark ? mix(th.dark, '#ffffff', 0.18) : th.line;
+    const R = (x, y, w, h, fill, o) => items.push({ k: 'rect', x, y, w, h, fill, ...(o || {}) });
+    const T = (x, y, w, h, s, o) => {
+      o = { font: 'sans', size: 20, color: body, align: 'l', va: 't', lh: 1.25, ...(o || {}) }; if (s == null || String(s) === '') return 0;
+      const f = o.fit === false ? { size: o.size, h: wrap(s, o.size, o.font, o.bold, w).length * o.size * o.lh } : fit(s, { ...o, w, h }); items.push({ k: 'text', x, y, w, h, s: o.caps ? String(s).toUpperCase() : String(s), ...o, size: f.size }); return f.h;
+    };
+    const IMG = (x, y, w, h, id, o) => { const im = IM && IM[id]; if (!im || !im.data) return false; items.push({ k: 'img', x, y, w, h, src: im.data, iw: im.w, ih: im.h, id, ...(o || {}) }); return true; };
+    const card = (x, y, w, h, fill, line) => R(x, y, w, h, fill || cardBg, { r: 14, line: line || cardLn });
+    const title = (s) => { T(M, 50, W - 2 * M, 84, S(s, 140), { font: th.hf, size: 40, min: 24, bold: true, color: fg, lh: 1.15, va: 'm' }); };
+    const footer = (s) => { if (s) T(M, 674, 900, 24, S('Fuente: ' + String(s).replace(/^fuente:\s*/i, ''), 160), { size: 14, color: sub, fit: true, min: 11 }); if (!dark || L !== 'portada') T(W - M - 80, 674, 80, 24, String(i + 1), { size: 14, color: sub, align: 'r' }); };
+    const nota = (s, y, h) => { if (!s) return; const t = S(s, 420), nl = wrap(t, 17, 'sans', false, W - 2 * M - 40).length, hh = Math.min(h, Math.max(54, nl * 22 + 30)); R(M, y, W - 2 * M, hh, dark ? cardBg : th.band, { r: 14 }); T(M + 20, y + 10, W - 2 * M - 40, hh - 20, t, { size: 17, min: 12, color: body, va: 'm', lh: 1.3 }); };
+    const callout = (x, y, w, h, c) => {
+      const tone = c.tono === 'ok' ? [th.okbg, th.ok] : c.tono === 'mal' ? [th.badbg, th.bad] : [th.infobg, th.accentTx]; R(x, y, w, h, tone[0], { r: 12 }); R(x, y, 6, h, tone[1], { r: 3 });
+      T(x + 22, y + 12, w - 36, 22, S(c.etiqueta, 40), { size: 15, bold: true, color: tone[1], caps: true, spacing: 1.5, min: 11 }); T(x + 22, y + 38, w - 36, h - 48, S(c.texto, 200), { size: 19, min: 12, color: th.text, lh: 1.28 });
+    };
+    const kpi = (x, y, w, h, c) => {
+      card(x, y, w, h, dark ? cardBg : th.card, cardLn); T(x + 20, y + 14, w - 40, 22, S(c.etiqueta, 40), { size: 15, bold: true, color: dark ? th.accent : th.accentTx, caps: true, spacing: 1.2, min: 11 });
+      const vh = T(x + 20, y + 40, w - 40, 62, S(c.valor, 22), { font: th.hf, size: 52, min: 22, bold: true, color: fg, lh: 1.05, va: 'm' }); T(x + 20, y + 40 + 66, w - 40, h - 40 - 66 - 10, S(c.detalle, 110), { size: 16, min: 11, color: sub, lh: 1.25 });
+    };
+    const list = (x, y, w, h, pts, o) => {
+      o = o || {}; const ps = (pts || []).slice(0, 8).map((p) => (typeof p === 'string' ? { t: p, d: '' } : { t: S(p && (p.t || p.titulo || p.texto), 140), d: S(p && (p.d || p.detalle), 260) })).filter((p) => p.t || p.d); if (!ps.length) return;
+      let sc = 1, hs = []; const build = (k) => ps.map((p) => { const lead = !!(p.t && p.d), ts = Math.round((lead ? 25 : 23) * k), ds = Math.round(19 * k); const a = p.t ? wrap(p.t, ts, 'sans', lead, w - 40) : [], b = p.d ? wrap(p.d, ds, 'sans', false, w - 40) : []; return { p, lead, ts, ds, a, b, h: a.length * ts * 1.22 + b.length * ds * 1.28 + (a.length && b.length ? 4 : 0) }; });
+      for (; sc >= 0.5; sc -= 0.05) { hs = build(sc); const tot = hs.reduce((q, z) => q + z.h, 0) + (hs.length - 1) * 16 * sc; if (tot <= h) break; }
+      const tot = hs.reduce((q, z) => q + z.h, 0) + (hs.length - 1) * 16 * sc; let cy = y + Math.max(0, Math.min(18, (h - tot) / (hs.length > 3 ? 8 : 3)));
+      hs.forEach((z) => {
+        if (o.check) items.push({ k: 'text', x, y: cy - 2, w: 28, h: 28, s: '✓', size: Math.round(24 * sc), font: 'sans', bold: true, color: th.ok, lh: 1, align: 'l', va: 't' }); else items.push({ k: 'rect', x: x + 2, y: cy + z.ts * 0.45 - 5, w: 10, h: 10, fill: th.accent, r: 5 });
+        let yy = cy; if (z.a.length) { items.push({ k: 'text', x: x + 30, y: yy, w: w - 36, h: z.a.length * z.ts * 1.22, s: z.a.join('\n'), size: z.ts, font: 'sans', bold: z.lead, color: z.lead ? fg : body, lh: 1.22, align: 'l', va: 't', fit: false }); yy += z.a.length * z.ts * 1.22 + 4; }
+        if (z.b.length) items.push({ k: 'text', x: x + 30, y: yy, w: w - 36, h: z.b.length * z.ds * 1.28, s: z.b.join('\n'), size: z.ds, font: 'sans', color: z.lead ? sub : body, lh: 1.28, align: 'l', va: 't', fit: false }); cy += z.h + 16 * sc;
+      });
+    };
+    /* ---------- gráficos ---------- */
+    const chart = (x, y, w, h, c) => {
+      card(x, y, w, h, th.card, th.line); if (!c || !(c.etiquetas || []).length) return;
+      const labels = (c.etiquetas || []).slice(0, 12).map((v) => S(v, 30)), series = (c.series || []).slice(0, 5).map((s) => ({ n: S(s.nombre, 30), v: labels.map((_, j) => Number((s.valores || [])[j]) || 0) })); if (!series.length) return;
+      const tipo = ['barras', 'barras_h', 'lineas', 'circular', 'apiladas'].includes(c.tipo) ? c.tipo : 'barras', unit = S(c.unidad, 12), cols = th.chart; let top = y + 16;
+      if (c.titulo) { T(x + 20, top, w - 40, 28, S(c.titulo, 90), { size: 19, bold: true, color: th.ink, min: 13 }); top += 32; }
+      if (series.length > 1 && tipo !== 'circular') { let lx = x + 24; series.forEach((s, k) => { const tw = Math.min(200, 26 + (S(s.n, 30).length * 8.4)); R(lx, top + 5, 14, 14, cols[k % cols.length], { r: 3 }); T(lx + 20, top, tw, 24, s.n, { size: 15, color: th.text, min: 11, fit: true }); lx += tw + 22; }); top += 30; }
+      const ax = x + 20, aw = w - 40, ay = top + 8, ah = y + h - ay - 16; const fmt = (v) => num(v) + (unit && unit.length <= 3 ? ' ' + unit : '');
+      if (tipo === 'circular') {
+        const s0 = series[0], tot = s0.v.reduce((q, v) => q + Math.max(0, v), 0) || 1, cx = ax + Math.min(ah, aw * 0.5) / 2 + 10, cy = ay + ah / 2, ro = Math.min(ah, aw * 0.5) / 2, ri = ro * 0.56; let a0 = -Math.PI / 2;
+        s0.v.forEach((v, j) => { const fr = Math.max(0, v) / tot; if (fr <= 0) return; const a1 = a0 + fr * Math.PI * 2, pts = [], st = Math.max(2, Math.ceil((a1 - a0) / 0.08)); for (let q = 0; q <= st; q++) { const a = a0 + (a1 - a0) * q / st; pts.push([cx + ro * Math.cos(a), cy + ro * Math.sin(a)]); } for (let q = st; q >= 0; q--) { const a = a0 + (a1 - a0) * q / st; pts.push([cx + ri * Math.cos(a), cy + ri * Math.sin(a)]); } items.push({ k: 'poly', pts, fill: cols[j % cols.length], line: th.card }); a0 = a1; });
+        const lx = cx + ro + 40, rows = Math.min(labels.length, 8), rh = Math.min(38, ah / rows); labels.slice(0, rows).forEach((lb, j) => { const yy = cy - rows * rh / 2 + j * rh; R(lx, yy + rh / 2 - 8, 16, 16, cols[j % cols.length], { r: 4 }); T(lx + 26, yy, x + w - 20 - lx - 26, rh, lb + ' · ' + num(s0.v[j]) + (unit && unit.length <= 3 ? ' ' + unit : '') + (unit === '%' ? '' : ' (' + num(s0.v[j] / tot * 100) + ' %)'), { size: 17, color: th.text, va: 'm', min: 11 }); }); return;
+      }
+      const stacked = tipo === 'apiladas'; let max = 0, min = 0; labels.forEach((_, j) => { if (stacked) { max = Math.max(max, series.reduce((q, s) => q + Math.max(0, s.v[j]), 0)); min = Math.min(min, series.reduce((q, s) => q + Math.min(0, s.v[j]), 0)); } else series.forEach((s) => { max = Math.max(max, s.v[j]); min = Math.min(min, s.v[j]); }); });
+      const step = (() => { const r = (max - min) || 1, p = Math.pow(10, Math.floor(Math.log10(r / 4))), m = r / 4 / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; })(); max = Math.ceil(max / step) * step; min = Math.floor(min / step) * step; if (max === min) max = min + step;
+      if (tipo === 'barras_h') {
+        const lw = Math.min(230, aw * 0.3), px = ax + lw + 10, pw = aw - lw - 70, rows = labels.length, rh = ah / rows, bw = Math.min(30, (rh - 8) / series.length), X = (v) => px + (v - min) / (max - min) * pw;
+        for (let g = 0; g <= (max - min) / step + 0.001; g++) { const gx = X(min + g * step); items.push({ k: 'line', x1: gx, y1: ay, x2: gx, y2: ay + ah, color: th.line, w: 1 }); }
+        labels.forEach((lb, j) => { const cy = ay + j * rh + rh / 2; T(ax, cy - 22, lw, 44, lb, { size: 16, color: th.text, align: 'r', va: 'm', min: 11 }); series.forEach((s, k) => { const by = cy - series.length * bw / 2 + k * bw, x0 = X(0), x1 = X(s.v[j]); R(Math.min(x0, x1), by, Math.max(2, Math.abs(x1 - x0)), bw - 2, cols[k % cols.length], { r: 3 }); T(Math.max(x0, x1) + 6, by - 3, 90, bw + 4, fmt(s.v[j]), { size: 14, color: th.text, va: 'm', min: 10, fit: true }); }); }); items.push({ k: 'line', x1: X(0), y1: ay, x2: X(0), y2: ay + ah, color: th.muted, w: 1.5 }); return;
+      }
+      const lw = 58, px = ax + lw, pw = aw - lw, Y = (v) => ay + ah - 26 - (v - min) / (max - min) * (ah - 26), gw = pw / labels.length;
+      for (let g = 0; g <= (max - min) / step + 0.001; g++) { const v = min + g * step, gy = Y(v); items.push({ k: 'line', x1: px, y1: gy, x2: px + pw, y2: gy, color: th.line, w: 1 }); T(ax, gy - 10, lw - 8, 20, num(v), { size: 13, color: th.muted, align: 'r', va: 'm', min: 10, fit: true }); }
+      items.push({ k: 'line', x1: px, y1: Y(0), x2: px + pw, y2: Y(0), color: th.muted, w: 1.5 });
+      labels.forEach((lb, j) => { const gx = px + j * gw; T(gx + 2, ay + ah - 24, gw - 4, 24, lb, { size: 14, color: th.text, align: 'c', va: 'm', min: 9 }); });
+      if (tipo === 'lineas') {
+        series.forEach((s, k) => { const col = cols[k % cols.length]; for (let j = 0; j < labels.length; j++) { const X = px + j * gw + gw / 2; if (j) items.push({ k: 'line', x1: px + (j - 1) * gw + gw / 2, y1: Y(s.v[j - 1]), x2: X, y2: Y(s.v[j]), color: col, w: 3.5 }); } labels.forEach((_, j) => { const X = px + j * gw + gw / 2; R(X - 5, Y(s.v[j]) - 5, 10, 10, col, { r: 5 }); if (labels.length <= 8) T(X - 40, Y(s.v[j]) - 28, 80, 20, fmt(s.v[j]), { size: 13, color: th.text, align: 'c', min: 9, fit: true }); }); }); return;
+      }
+      labels.forEach((_, j) => {
+        const gx = px + j * gw, inner = gw * 0.72; if (stacked) { let pos = 0, neg = 0; const bw = Math.min(90, inner); series.forEach((s, k) => { const v = s.v[j], y0 = v >= 0 ? Y(pos) : Y(neg), y1 = v >= 0 ? Y(pos + v) : Y(neg + v); R(gx + (gw - bw) / 2, Math.min(y0, y1), bw, Math.max(1, Math.abs(y0 - y1)), cols[k % cols.length], { r: 2 }); if (Math.abs(y0 - y1) > 20) T(gx + (gw - bw) / 2, Math.min(y0, y1), bw, Math.abs(y0 - y1), num(v), { size: 13, color: lum(cols[k % cols.length]) > 0.6 ? '#222222' : '#ffffff', align: 'c', va: 'm', min: 9, fit: true }); if (v >= 0) pos += v; else neg += v; }); return; }
+        const bw = Math.min(70, inner / series.length); series.forEach((s, k) => { const bx = gx + (gw - bw * series.length) / 2 + k * bw, y0 = Y(0), y1 = Y(s.v[j]); R(bx + 1, Math.min(y0, y1), bw - 2, Math.max(1, Math.abs(y0 - y1)), cols[k % cols.length], { r: 3 }); T(bx - 14, Math.min(y0, y1) - 22, bw + 28, 20, fmt(s.v[j]), { size: 13, color: th.text, align: 'c', min: 9, fit: true }); });
+      });
+    };
+    /* ---------- diseños ---------- */
+    const imgId = sl.imagen && IM && IM[sl.imagen] ? sl.imagen : '';
+    if (L === '_chart') { chart(24, 24, W - 48, H - 48 - (sl.fuente ? 26 : 0), sl.grafico); if (sl.fuente) T(32, H - 40, W - 64, 22, S('Fuente: ' + sl.fuente, 160), { size: 14, color: th.muted, min: 10 }); return { bg: th.light, items, notes: '', W, H }; }
+    if (L === 'portada') {
+      const hasI = !!imgId, w = hasI ? 560 : 1000; const by = hasI ? 0 : 56; T(M, 84 + by, w, 26, S(sl.kicker, 70), { size: 18, bold: true, color: th.accent, caps: true, spacing: 2, min: 12 });
+      const hh = T(M, 120 + by, w, hasI ? 230 : 250, S(sl.title, 160), { font: th.hf, size: hasI ? 54 : 64, min: 30, bold: true, color: fg, lh: 1.12 }); const ly = 120 + by + hh + 18; R(M, ly, 90, 3, th.accent);
+      T(M, ly + 18, w, hasI ? 100 : 120, S(sl.subtitle, 200), { size: 22, min: 14, color: sub, lh: 1.35 });
+      if (hasI) { IMG(700, 84, 500, 330, imgId, { r: 14, line: th.accent }); }
+      const ks = (sl.kpis || []).slice(0, 3); const kw = (W - 2 * M - 24 * 2) / 3; ks.forEach((c, j) => kpi(M + j * (kw + 24), 500, kw, 150, { etiqueta: c.etiqueta || c.label, valor: c.valor, detalle: c.detalle }));
+    } else if (L === 'seccion') {
+      if (sl.numero != null && sl.numero !== '') T(M, 190, 400, 90, S(sl.numero, 4), { font: th.hf, size: 84, color: th.accent, bold: true, lh: 1 }); const hh = T(M, 290, W - 2 * M - 120, 170, S(sl.title, 120), { font: th.hf, size: 56, min: 30, bold: true, color: fg, lh: 1.12 }); R(M, 290 + hh + 14, 90, 3, th.accent); T(M, 290 + hh + 34, W - 2 * M - 200, 90, S(sl.subtitle, 200), { size: 22, min: 14, color: sub });
+    } else if (L === 'destacado') {
+      R(M, 150, 8, 340, th.accent, { r: 4 }); T(M + 40, 140, W - 2 * M - 80, 360, '“' + S(sl.frase || sl.title, 260) + '”', { font: th.hf, size: 46, min: 24, color: fg, lh: 1.25, va: 'm' }); if (sl.autor) T(M + 40, 520, W - 2 * M - 80, 30, '— ' + S(sl.autor, 80), { size: 20, color: th.accent, bold: true });
+    } else if (L === 'kpis') {
+      title(sl.title); const cs = (sl.cards || sl.indicadores || []).slice(0, 8), n2 = cs.length || 1, cl = n2 <= 4 ? n2 : n2 <= 6 ? 3 : 4, rows = Math.ceil(n2 / cl), gap = 16, cw = (W - 2 * M - gap * (cl - 1)) / cl, ch = sl.nota ? (rows === 1 ? 190 : 158) : (rows === 1 ? 230 : 220);
+      cs.forEach((c, j) => kpi(M + (j % cl) * (cw + gap), 150 + Math.floor(j / cl) * (ch + gap), cw, ch, c)); nota(sl.nota, 150 + rows * (ch + gap) + 6, 100);
+    } else if (L === 'tabla') {
+      title(sl.title); const cols = (sl.columnas || []).slice(0, 6).map((c) => S(c, 40)), rows = (sl.filas || []).slice(0, 12); if (cols.length) {
+        const wts = cols.map((c, j) => Math.max(8, Math.min(34, Math.max(c.length, ...rows.map((r) => S(r[j] && r[j].v != null ? r[j].v : r[j], 60).length)) * 0.9 + 4))), tw = wts.reduce((a, b) => a + b, 0), TW = W - 2 * M; const cx = []; let acc = M; wts.forEach((q) => { cx.push([acc, TW * q / tw]); acc += TW * q / tw; });
+        const avail = (sl.nota ? 400 : 500), hh = Math.min(50, avail / (rows.length + 1)), fs = hh >= 44 ? 18 : hh >= 36 ? 16 : 14; R(M, 150, TW, hh, th.dark, { r: 8 }); cols.forEach((c, j) => T(cx[j][0] + 12, 150, cx[j][1] - 20, hh, c, { size: fs, bold: true, color: '#ffffff', va: 'm', min: 10 }));
+        rows.forEach((r, k) => { const yy = 150 + hh * (k + 1); R(M, yy, TW, hh, k % 2 ? th.band : th.card, { line: th.line }); cols.forEach((_, j) => { const cell = r[j], v = cell && typeof cell === 'object' ? cell.v : cell, tone = cell && typeof cell === 'object' ? cell.tono : ''; T(cx[j][0] + 12, yy, cx[j][1] - 20, hh, S(v, 80), { size: fs, bold: j === 0 || !!tone, color: tone === 'ok' ? th.ok : tone === 'mal' ? th.bad : th.text, va: 'm', min: 10, lh: 1.15 }); }); });
+        nota(sl.nota, 150 + hh * (rows.length + 1) + 20, 84);
+      }
+    } else if (L === 'grafico') {
+      title(sl.title); const ds = (sl.destacados || []).slice(0, 3), two = !!(sl.grafico2 && (sl.grafico2.etiquetas || []).length), chH = ds.length ? 340 : (sl.nota ? 380 : 480), gap = 20, cw = two ? (W - 2 * M - gap) / 2 : W - 2 * M;
+      chart(M, 150, cw, chH, sl.grafico); if (two) chart(M + cw + gap, 150, cw, chH, sl.grafico2);
+      if (ds.length) { const dw = (W - 2 * M - 20 * (ds.length - 1)) / ds.length; ds.forEach((c, j) => callout(M + j * (dw + 20), 150 + chH + 20, dw, 130, c)); } else nota(sl.nota, 150 + chH + 14, 88);
+    } else if (L === 'imagen') {
+      title(sl.title); card(M, 150, W - 2 * M, sl.pie ? 440 : 500, th.card, th.line); if (!IMG(M + 10, 160, W - 2 * M - 20, sl.pie ? 420 : 480, imgId, { r: 10, fitMode: 'contain' })) T(M, 300, W - 2 * M, 60, 'Añade una imagen a esta diapositiva', { size: 20, color: th.muted, align: 'c' }); if (sl.pie) T(M, 604, W - 2 * M, 50, S(sl.pie, 220), { size: 18, color: th.muted, align: 'c', min: 12 });
+    } else if (L === 'columnas') {
+      title(sl.title); [sl.izquierda || {}, sl.derecha || {}].forEach((c, j) => { const x = M + j * 574, w = 546; card(x, 150, w, 490, th.card, th.line); T(x + 24, 168, w - 48, 34, S(c.titulo, 60), { font: th.hf, size: 26, bold: true, color: th.accentTx, min: 16 }); list(x + 24, 216, w - 48, 408, c.puntos || []); });
+    } else if (L === 'conclusiones') {
+      title(sl.title); const ds = (sl.destacados || []).slice(0, 3); list(M, 150, W - 2 * M, ds.length ? 330 : 480, sl.puntos || [], { check: true }); if (ds.length) { const dw = (W - 2 * M - 20 * (ds.length - 1)) / ds.length; ds.forEach((c, j) => callout(M + j * (dw + 20), 500, dw, 140, c)); }
+    } else { /* puntos */
+      title(sl.title); const w = imgId ? 640 : W - 2 * M; list(M, 150, w, sl.nota ? 400 : 490, sl.puntos || []); if (imgId) { IMG(M + 680, 150, 440, 440, imgId, { r: 14, line: th.line }); } nota(sl.nota, 566, 84);
+    }
+    footer(sl.fuente);
+    return { bg, items, notes: S(sl.notas, 1500), W, H };
+  }
+  /* ---------- render en canvas (visor, miniaturas y PDF) ---------- */
+  const imgCache = {};
+  function loadImg(src) { return imgCache[src] || (imgCache[src] = new Promise((ok) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; })); }
+  async function prep(scene) { await Promise.all(scene.items.filter((q) => q.k === 'img').map((q) => loadImg(q.src).then((i) => { q.el = i; }))); return scene; }
+  function rr(ctx, x, y, w, h, r) { r = Math.min(r || 0, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function draw(ctx, scene, scale) {
+    ctx.save(); ctx.scale(scale, scale); ctx.fillStyle = scene.bg; ctx.fillRect(0, 0, W, H);
+    scene.items.forEach((q) => {
+      if (q.k === 'rect') { ctx.save(); if (q.fa != null) ctx.globalAlpha = q.fa; rr(ctx, q.x, q.y, q.w, q.h, q.r); ctx.fillStyle = q.fill; ctx.fill(); ctx.restore(); if (q.line) { rr(ctx, q.x + 0.5, q.y + 0.5, q.w - 1, q.h - 1, q.r); ctx.strokeStyle = q.line; ctx.lineWidth = 1; ctx.stroke(); } }
+      else if (q.k === 'line') { ctx.beginPath(); ctx.moveTo(q.x1, q.y1); ctx.lineTo(q.x2, q.y2); ctx.strokeStyle = q.color; ctx.lineWidth = q.w || 1; ctx.lineCap = 'round'; ctx.stroke(); }
+      else if (q.k === 'poly') { ctx.beginPath(); q.pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath(); ctx.fillStyle = q.fill; ctx.fill(); if (q.line) { ctx.strokeStyle = q.line; ctx.lineWidth = 1.5; ctx.stroke(); } }
+      else if (q.k === 'img') {
+        const im = q.el; ctx.save(); rr(ctx, q.x, q.y, q.w, q.h, q.r); ctx.clip(); if (im) { const ar = im.width / im.height, br = q.w / q.h; if (q.fitMode === 'contain') { let dw = q.w, dh = q.w / ar; if (dh > q.h) { dh = q.h; dw = q.h * ar; } ctx.drawImage(im, q.x + (q.w - dw) / 2, q.y + (q.h - dh) / 2, dw, dh); } else { let sw = im.width, sh = im.height, sx = 0, sy = 0; if (ar > br) { sw = im.height * br; sx = (im.width - sw) / 2; } else { sh = im.width / br; sy = (im.height - sh) / 2; } ctx.drawImage(im, sx, sy, sw, sh, q.x, q.y, q.w, q.h); } } ctx.restore(); if (q.line) { rr(ctx, q.x + 0.5, q.y + 0.5, q.w - 1, q.h - 1, q.r); ctx.strokeStyle = q.line; ctx.lineWidth = 1.5; ctx.stroke(); }
+      } else if (q.k === 'text') {
+        ctx.fillStyle = q.color; ctx.textBaseline = 'top'; ctx.font = (q.bold ? '700 ' : '400 ') + q.size + 'px ' + FONT[q.font || 'sans']; try { ctx.letterSpacing = (q.spacing || 0) + 'px'; } catch (e) {}
+        const ls = q.fit === false && /\n/.test(q.s) ? q.s.split('\n') : wrap(q.s, q.size, q.font || 'sans', q.bold, q.w), lh = q.size * (q.lh || 1.25), tot = ls.length * lh; let y = q.va === 'm' ? q.y + (q.h - tot) / 2 : q.va === 'b' ? q.y + q.h - tot : q.y;
+        ls.forEach((l) => { const tw = ctx.measureText(l).width; const x = q.align === 'c' ? q.x + (q.w - tw) / 2 : q.align === 'r' ? q.x + q.w - tw : q.x; ctx.fillText(l, x, y + (lh - q.size) / 2); y += lh; }); try { ctx.letterSpacing = '0px'; } catch (e) {}
+      }
+    });
+    ctx.restore();
+  }
+  async function renderTo(canvas, scene, width) { await prep(scene); const sc = width / W; canvas.width = Math.round(W * sc); canvas.height = Math.round(H * sc); draw(canvas.getContext('2d'), scene, sc); return canvas; }
+  /* ---------- exportación PPTX (editable) ---------- */
+  const ld = (src) => new Promise((ok, ko) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = () => ko(new Error('x')); document.head.append(s); });
+  async function libPptx() { if (window.PptxGenJS) return window.PptxGenJS; for (const u of ['https://cdnjs.cloudflare.com/ajax/libs/PptxGenJS/3.12.0/pptxgen.bundle.js', 'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js', 'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js']) { try { await ld(u); if (window.PptxGenJS) return window.PptxGenJS; } catch (e) {} } throw new Error('No se pudo cargar el generador de PowerPoint. Revisa tu conexión.'); }
+  const PX = 1 / 96, hx = (c) => String(c).replace('#', '').toUpperCase();
+  async function cropData(q) { const im = await loadImg(q.src); if (!im) return null; const c = document.createElement('canvas'), pw = Math.round(q.w * 2), ph = Math.round(q.h * 2); c.width = pw; c.height = ph; const x = c.getContext('2d'); const ar = im.width / im.height, br = pw / ph; if (q.fitMode === 'contain') { let dw = pw, dh = pw / ar; if (dh > ph) { dh = ph; dw = ph * ar; } x.drawImage(im, (pw - dw) / 2, (ph - dh) / 2, dw, dh); } else { let sw = im.width, sh = im.height, sx = 0, sy = 0; if (ar > br) { sw = im.height * br; sx = (im.width - sw) / 2; } else { sh = im.width / br; sy = (im.height - sh) / 2; } x.drawImage(im, sx, sy, sw, sh, 0, 0, pw, ph); } return c.toDataURL('image/jpeg', 0.88); }
+  async function buildPptx(deck, IM) {
+    const P = await libPptx(), p = new P(); p.layout = 'LAYOUT_WIDE'; p.title = deck.title || 'Presentación'; const slides = deck.slides || [];
+    for (let i = 0; i < slides.length; i++) {
+      const sc = sceneOf(slides[i], i, slides.length, deck, IM), s = p.addSlide(); s.background = { color: hx(sc.bg) };
+      for (const q of sc.items) {
+        if (q.k === 'rect') { const o = { x: q.x * PX, y: q.y * PX, w: q.w * PX, h: q.h * PX, fill: { color: hx(q.fill), transparency: q.fa != null ? Math.round((1 - q.fa) * 100) : 0 }, line: q.line ? { color: hx(q.line), width: 0.75 } : { type: 'none' } }; if (q.r && q.r >= Math.min(q.w, q.h) / 2 - 0.5 && Math.abs(q.w - q.h) < 1) s.addShape(p.shapes.OVAL, o); else if (q.r > 0) s.addShape(p.shapes.ROUNDED_RECTANGLE, { ...o, rectRadius: Math.min(q.r, q.h / 2, q.w / 2) * PX }); else s.addShape(p.shapes.RECTANGLE, o); }
+        else if (q.k === 'line') { const x = Math.min(q.x1, q.x2), y = Math.min(q.y1, q.y2), w = Math.abs(q.x2 - q.x1), h = Math.abs(q.y2 - q.y1), flipV = (q.y2 < q.y1) !== (q.x2 < q.x1); s.addShape(p.shapes.LINE, { x: x * PX, y: y * PX, w: Math.max(w, 0.01) * PX, h: Math.max(h, 0.01) * PX, flipV, line: { color: hx(q.color), width: Math.max(0.5, (q.w || 1) * 0.75) } }); }
+        else if (q.k === 'poly') { const xs = q.pts.map((a) => a[0]), ys = q.pts.map((a) => a[1]), x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0, h = Math.max(...ys) - y0; const pts = q.pts.map((a, k) => (k === 0 ? { x: (a[0] - x0) * PX, y: (a[1] - y0) * PX, moveTo: true } : { x: (a[0] - x0) * PX, y: (a[1] - y0) * PX })); pts.push({ close: true }); try { s.addShape(p.shapes.CUSTOM_GEOMETRY, { x: x0 * PX, y: y0 * PX, w: w * PX, h: h * PX, points: pts, fill: { color: hx(q.fill) }, line: q.line ? { color: hx(q.line), width: 1 } : { type: 'none' } }); } catch (e) {} }
+        else if (q.k === 'img') { const d = await cropData(q); if (d) { try { s.addImage({ data: d, x: q.x * PX, y: q.y * PX, w: q.w * PX, h: q.h * PX, rounding: false }); } catch (e) {} } }
+        else if (q.k === 'text') { s.addText(q.s, { x: q.x * PX, y: q.y * PX, w: q.w * PX, h: q.h * PX, fontFace: PF[q.font || 'sans'], fontSize: Math.max(8, Math.round(q.size * 0.75 * (q.font === 'serif' ? 0.92 : 0.97) * 2) / 2), bold: !!q.bold, color: hx(q.color), align: q.align === 'c' ? 'center' : q.align === 'r' ? 'right' : 'left', valign: q.va === 'm' ? 'middle' : q.va === 'b' ? 'bottom' : 'top', margin: 0, wrap: true, fit: 'none', lineSpacingMultiple: Math.max(0.8, (q.lh || 1.25) / 1.2), charSpacing: q.spacing ? q.spacing * 0.75 : undefined, paraSpaceAfter: 0 }); }
+      }
+      if (sc.notes) s.addNotes(sc.notes);
+    }
+    return p;
+  }
+  /* ---------- exportación PDF (una página por diapositiva) ---------- */
+  async function libPdf() { if (window.PDFLib) return window.PDFLib; for (const u of ['https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js', 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js', 'https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js']) { try { await ld(u); if (window.PDFLib) return window.PDFLib; } catch (e) {} } throw new Error('No se pudo cargar el generador de PDF. Revisa tu conexión.'); }
+  async function buildPdf(deck, IM, onProg) {
+    const PL = await libPdf(), doc = await PL.PDFDocument.create(), slides = deck.slides || [];
+    doc.setTitle(deck.title || 'Presentación'); doc.setCreator('Fábrica de Apuntes');
+    for (let i = 0; i < slides.length; i++) {
+      if (onProg) onProg(i + 1, slides.length); const cv = document.createElement('canvas'); await renderTo(cv, sceneOf(slides[i], i, slides.length, deck, IM), 1920);
+      const blob = await new Promise((ok) => cv.toBlob(ok, 'image/jpeg', 0.92)), img = await doc.embedJpg(new Uint8Array(await blob.arrayBuffer())), pg = doc.addPage([960, 540]); pg.drawImage(img, { x: 0, y: 0, width: 960, height: 540 });
+    }
+    return doc.save();
+  }
+  window.dkEngine = { W, H, THEMES, themeOf, sceneOf, renderTo, prep, buildPptx, buildPdf, wrap, num, mix };
+
+  /* =====================  Estudio de presentaciones: interfaz  ===================== */
+  const E = window.dkEngine, IM = {}, KEY = 'fa_dkcfg_v1';
+  const css = document.createElement('style'); css.id = 'fa-dk-css';
+  css.textContent = `
+.dk-ov{position:fixed;inset:0;z-index:2147481000;background:var(--bg);color:var(--fg);display:flex;flex-direction:column}
+.dk-bar{display:flex;align-items:center;gap:8px;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top,0px));border-bottom:1px solid var(--line);background:var(--surface);flex-wrap:wrap}
+.dk-bar .btn{display:inline-flex;align-items:center;gap:5px;flex:none}.dk-ttl{font:700 16px system-ui;flex:1;min-width:120px;border:0;background:transparent;color:inherit;padding:6px 4px;border-radius:8px}.dk-ttl:focus{outline:2px solid var(--accent);background:var(--bg)}
+.dk-steps{display:flex;gap:6px;font:600 12px system-ui;opacity:.85;flex-wrap:wrap}.dk-steps span{padding:4px 9px;border-radius:99px;border:1px solid var(--line)}.dk-steps .on{background:var(--accent);color:var(--accent-fg,#fff);border-color:transparent}
+.dk-page{overflow:auto;padding:16px max(16px,env(safe-area-inset-left,0px));flex:1}.dk-wrap{max-width:900px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+.dk-sec{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}.dk-sec h3{margin:0;font-size:16px}
+.dk-f{display:flex;flex-direction:column;gap:6px}.dk-f>b{font-size:12.5px;color:var(--muted);font-weight:600}.dk-f textarea,.dk-f input[type=text],.dk-f input[type=number],.dk-f select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);color:var(--fg);font:15px system-ui}
+.dk-f textarea{min-height:92px;resize:vertical}.dk-sub{font-size:12.5px;opacity:.75;margin:0}
+.dk-seg{display:flex;gap:6px;flex-wrap:wrap}.dk-seg button,.dk-chip{flex:1 1 auto;border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:10px;padding:8px 10px;font:600 13px system-ui;cursor:pointer;min-height:38px}.dk-seg button[aria-pressed=true],.dk-chip[aria-pressed=true]{background:var(--accent);color:var(--accent-fg,#fff);border-color:transparent}
+.dk-th{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}@media(min-width:560px){.dk-th{grid-template-columns:repeat(4,1fr)}}
+.dk-th button{border:2px solid var(--line);border-radius:12px;padding:8px;background:var(--bg);color:var(--fg);cursor:pointer;font:600 12.5px system-ui;display:flex;flex-direction:column;gap:6px;text-align:left}.dk-th button[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
+.dk-sw{height:42px;border-radius:8px;display:flex;overflow:hidden;border:1px solid rgba(0,0,0,.08)}.dk-sw i{flex:1}.dk-sw i:first-child{flex:2}
+.dk-files{display:flex;flex-direction:column;gap:6px}.dk-file{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:var(--bg)}.dk-file img{width:38px;height:38px;object-fit:cover;border-radius:6px}.dk-file span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.dk-go{min-height:52px;font-size:16px}.dk-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.dk-ix{display:flex;gap:10px;align-items:flex-start;border:1.5px solid var(--line);background:var(--surface);border-radius:14px;padding:10px}.dk-ix.drop{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.dk-ix .n{flex:none;width:30px;height:30px;border-radius:9px;background:var(--accent);color:var(--accent-fg,#fff);display:grid;place-items:center;font:700 14px system-ui;cursor:grab;touch-action:none}
+.dk-ix .m{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}.dk-ix input,.dk-ix textarea,.dk-ix select{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--bg);color:var(--fg);font:14px system-ui}.dk-ix input{font-weight:700}.dk-ix textarea{resize:none;min-height:40px;opacity:.9}
+.dk-ix .a{display:flex;flex-direction:column;gap:4px}.dk-ix .a button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:8px;min-width:34px;min-height:30px;cursor:pointer}.dk-ix .a button:disabled{opacity:.35}
+.dk-sug{display:flex;flex-direction:column;gap:6px}.dk-sg{display:flex;gap:8px;align-items:center;border:1px dashed var(--accent);border-radius:12px;padding:8px 10px}.dk-sg div{flex:1;min-width:0;font-size:13.5px}.dk-sg b{display:block}
+.dk-gen{display:flex;flex-direction:column;align-items:center;gap:14px;padding:40px 16px;text-align:center}.dk-prog{width:min(520px,100%);height:10px;border-radius:99px;background:var(--line);overflow:hidden}.dk-prog i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#c9962b);transition:width .4s}
+.dk-view{flex:1;min-height:0;display:grid;grid-template-columns:150px minmax(0,1fr) auto}
+.dk-th2{overflow:auto;padding:10px;display:flex;flex-direction:column;gap:10px;border-right:1px solid var(--line);background:var(--surface)}.dk-tn{position:relative;border:2px solid transparent;border-radius:8px;padding:0;background:none;cursor:pointer;display:block;width:100%}.dk-tn canvas{width:100%;display:block;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,.2)}.dk-tn[aria-current=true]{border-color:var(--accent)}.dk-tn small{position:absolute;left:6px;top:4px;font:700 10px system-ui;background:rgba(0,0,0,.55);color:#fff;border-radius:6px;padding:1px 5px}
+.dk-main{overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}.dk-stage{width:100%;max-width:1100px;margin:0 auto}.dk-stage canvas{width:100%;display:block;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);background:#fff}
+.dk-tools{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}.dk-tools .btn{padding:6px 10px}
+.dk-ed{max-width:1100px;margin:0 auto;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}.dk-ed label{display:flex;flex-direction:column;gap:3px;font:600 12px system-ui;color:var(--muted)}.dk-ed input,.dk-ed textarea,.dk-ed select{border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--bg);color:var(--fg);font:14px system-ui}.dk-ed textarea{min-height:90px}
+.dk-rail{width:56px;border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:10px}.dk-rail button{width:42px;height:42px;border-radius:14px;border:0;background:linear-gradient(135deg,#f5b93a,#c9731f 55%,#8b5cf6);color:#fff;font-size:20px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.25)}.dk-rail span{writing-mode:vertical-rl;font:700 12px system-ui;opacity:.7;letter-spacing:.08em}
+.dk-as{width:min(380px,92vw);border-left:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;min-height:0}.dk-as header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700}.dk-as header span{flex:1}
+.dk-msgs{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}.dk-m{max-width:92%;padding:9px 12px;border-radius:14px;font:14px/1.45 system-ui;white-space:pre-wrap;overflow-wrap:anywhere}.dk-m.u{align-self:flex-end;background:var(--accent);color:var(--accent-fg,#fff)}.dk-m.a{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.dk-q{display:flex;gap:6px;flex-wrap:wrap;padding:0 12px 8px}.dk-q button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:99px;padding:6px 10px;font:600 12px system-ui;cursor:pointer}
+.dk-in{display:flex;gap:6px;padding:10px;border-top:1px solid var(--line)}.dk-in textarea{flex:1;border:1px solid var(--line);border-radius:12px;padding:9px;background:var(--bg);color:var(--fg);font:14px system-ui;resize:none;min-height:42px;max-height:120px}
+.dk-pres{position:fixed;inset:0;z-index:2147482500;background:#000;display:flex;align-items:center;justify-content:center}.dk-pres canvas{max-width:100vw;max-height:100vh;width:auto;height:auto;aspect-ratio:16/9}.dk-pres button{position:absolute;top:10px;right:12px;background:rgba(255,255,255,.2);color:#fff;border:0;border-radius:10px;padding:8px 12px;font:600 14px system-ui;cursor:pointer}
+@media(max-width:860px){.dk-view{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}.dk-th2{order:2;flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:8px}.dk-tn{width:110px;flex:none}.dk-rail{position:fixed;right:12px;bottom:92px;width:auto;border:0;background:none;padding:0}.dk-rail span{display:none}.dk-as{position:fixed;left:0;right:0;bottom:0;width:100%;max-height:72vh;border-left:0;border-top:1px solid var(--line);border-radius:18px 18px 0 0;z-index:5;box-shadow:0 -10px 40px rgba(0,0,0,.3)}}`;
+  document.head.appendChild(css);
+  const $$ = (s, r) => (r || document).querySelector(s);
+  const el = (...a) => h(...a);
+  const loadCfg = () => { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } };
+  const saveCfg = (c) => { try { localStorage.setItem(KEY, JSON.stringify({ n: c.n, minutes: c.minutes, density: c.density, charts: c.charts, kinds: [...c.kinds], theme: c.theme, primary: c.primary, accent: c.accent, font: c.font, cover: c.cover, notes: c.notes, onlyData: c.onlyData, cite: c.cite, extras: [...c.extras], purpose: c.purpose, lang: c.lang })); } catch (e) {} };
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const Z = { ov: null, phase: 'cfg', cfg: null, outline: [], deck: null, busy: '', ctl: null, cur: 0, edit: false, asOpen: false, from: '', saveT: 0, chat: [], chatBusy: false, sid: '' };
+  const LAY = [['portada', 'Portada'], ['seccion', 'Sección'], ['puntos', 'Ideas clave'], ['kpis', 'Indicadores'], ['tabla', 'Tabla'], ['grafico', 'Gráfico'], ['imagen', 'Imagen'], ['columnas', 'Dos columnas'], ['destacado', 'Frase destacada'], ['conclusiones', 'Conclusiones']];
+  const PURP = [['clase', 'Exposición en clase'], ['trabajo', 'Trabajo universitario'], ['defensa', 'Defensa (TFG/TFM)'], ['empresa', 'Informe de empresa'], ['pitch', 'Pitch / propuesta'], ['repaso', 'Repaso para estudiar']];
+  const EXTRAS = [['agenda', 'Índice / agenda'], ['resumen', 'Resumen ejecutivo'], ['conclusiones', 'Conclusiones'], ['biblio', 'Fuentes y bibliografía'], ['preguntas', 'Preguntas finales']];
+  const CHARTK = [['barras', 'Barras'], ['lineas', 'Líneas'], ['circular', 'Circular'], ['tablas', 'Tablas'], ['kpis', 'Indicadores']];
+  function newCfg(o) {
+    const P = loadCfg(); return { sid: o.sid || '', topic: o.topic || '', title: o.title || '', purpose: P.purpose || 'clase', aud: '', source: o.sid && !o.topic ? 'notes' : (o.topic ? 'text' : 'text'), sel: new Set(), text: '', files: [], n: P.n != null ? P.n : 10, minutes: P.minutes || 10, lang: P.lang || 'español', density: P.density || 'media', notes: P.notes !== false, charts: P.charts || 'auto', kinds: new Set(P.kinds || ['barras', 'lineas', 'circular', 'tablas', 'kpis']), useImgs: true, onlyData: P.onlyData !== false, cite: P.cite !== false, theme: P.theme || 'ejecutivo', primary: P.primary || '#1d3557', accent: P.accent || '#e9a23b', font: P.font || 'elegante', cover: P.cover || 'oscura', extras: new Set(P.extras || ['conclusiones']), free: o.free || '', fmt: 'pptx' };
+  }
+  const subjList = () => Object.entries((typeof state !== 'undefined' && state.subjects) || {});
+  /* ---------- imágenes ---------- */
+  function readImg(file, max) {
+    return new Promise((ok, ko) => { const u = URL.createObjectURL(file), i = new Image(); i.onload = () => { const k = Math.min(1, (max || 1600) / Math.max(i.width, i.height)), c = document.createElement('canvas'); c.width = Math.round(i.width * k); c.height = Math.round(i.height * k); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(i, 0, 0, c.width, c.height); URL.revokeObjectURL(u); c.toBlob((b) => ok({ data: c.toDataURL('image/jpeg', 0.86), w: c.width, h: c.height, blob: b }), 'image/jpeg', 0.86); }; i.onerror = () => { URL.revokeObjectURL(u); ko(new Error('No pude leer la imagen «' + file.name + '».')); }; i.src = u; });
+  }
+  async function addFiles(list) {
+    const c = Z.cfg; for (const f of Array.from(list || [])) {
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      try {
+        if (/^image\//.test(f.type) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'].includes(ext)) { const r = await readImg(f), id = 'img' + (Object.keys(IM).length + 1) + uid().slice(0, 3); IM[id] = { name: f.name, ...r }; c.files.push({ kind: 'img', id, name: f.name }); }
+        else if (/^audio\//.test(f.type) || ['mp3', 'm4a', 'wav', 'aac', 'ogg', 'webm'].includes(ext)) { c.files.push({ kind: 'audio', name: f.name, text: '' }); window.toast('Los archivos de audio no se pueden transcribir aquí. Usa «Dictar» o pega la transcripción en el texto.'); }
+        else { window.toast('Leyendo «' + f.name + '»…'); const t = String(await fileText(f)).trim(); if (t.length < 20) throw new Error('vacío'); c.files.push({ kind: 'doc', name: f.name, text: t.slice(0, 150000) }); }
+      } catch (e) { window.toast('No pude leer «' + f.name + '». Prueba con PDF, Word, PowerPoint, texto o una imagen.'); }
+    }
+  }
+  /* ---------- IA ---------- */
+  function parseJSON(t) {
+    t = String(t || '').replace(/```(?:json)?/gi, '').trim(); const a = t.search(/[\[{]/); if (a < 0) throw { code: 'invalid_json' }; const open = t[a], close = open === '[' ? ']' : '}'; let d = 0, s = false, esc = false, end = -1;
+    for (let i = a; i < t.length; i++) { const ch = t[i]; if (s) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') s = false; continue; } if (ch === '"') s = true; else if (ch === open) d++; else if (ch === close) { d--; if (!d) { end = i; break; } } }
+    const body = end > 0 ? t.slice(a, end + 1) : t.slice(a); try { return JSON.parse(body); } catch (e) { try { return JSON.parse(body.replace(/,\s*([}\]])/g, '$1')); } catch (e2) { throw { code: 'invalid_json' }; } }
+  }
+  async function ask(prompt, o) {
+    if (typeof sample === 'undefined' || !sample) throw { code: 'sampling_disabled' };
+    const imgs = (o && o.images) || []; let useI = false; try { if (imgs.length && sample.limits) useI = !!(await sample.limits()).images; } catch (e) {}
+    const r = await aiTry(() => sample(prompt, { modelTier: (o && o.tier) || 'default', cache: false, signal: o && o.signal, ...(useI ? { images: imgs } : {}) }), { label: 'deck', signal: o && o.signal, tries: 3 });
+    return String((r && r.text) || '');
+  }
+  async function material(c, say) {
+    const parts = [], names = [];
+    if (c.sid && state.subjects[c.sid] && c.source === 'notes') { const picks = c.sel.size ? [...c.sel] : resSources(c.sid).map((x) => x.id); if (picks.length) { try { const m = await resMaterial(c.sid, picks, say, { vis: false }); if (m.text) { parts.push('APUNTES DE LA ASIGNATURA «' + state.subjects[c.sid].name + '»:\n' + m.text); names.push(...m.names); } } catch (e) {} } }
+    if (c.text.trim()) parts.push('TEXTO DEL ESTUDIANTE:\n' + c.text.trim());
+    c.files.filter((f) => f.kind === 'doc').forEach((f) => { parts.push('ARCHIVO «' + f.name + '»:\n' + f.text); names.push(f.name); });
+    let txt = parts.join('\n\n---\n\n'); if (txt.length > 140000) txt = txt.slice(0, 140000) + '\n[…recortado…]';
+    return { text: txt, names };
+  }
+  const imgList = (c) => c.files.filter((f) => f.kind === 'img' && IM[f.id]);
+  const brief = (c) => [
+    'Tema/encargo: ' + (c.topic.trim() || c.title.trim() || '(deduce el tema del material)'), c.title.trim() ? 'Título deseado: ' + c.title.trim() : '', 'Finalidad: ' + (PURP.find((p) => p[0] === c.purpose) || [])[1], c.aud.trim() ? 'Público: ' + c.aud.trim() : '',
+    c.n ? 'Número de diapositivas: ' + c.n + ' (incluida la portada).' : 'Número de diapositivas: el que mejor encaje con una exposición de ' + c.minutes + ' minutos (aprox. 1 por minuto).', 'Duración de la exposición: ' + c.minutes + ' minutos.', 'Idioma: ' + c.lang + '.',
+    'Densidad de texto: ' + ({ poca: 'MUY POCO texto por diapositiva (frases cortas, apoyo visual)', media: 'texto moderado', mucha: 'texto denso y detallado (para leer)' }[c.density]) + '.',
+    c.charts === 'no' ? 'NO uses gráficos.' : 'Gráficos: ' + ({ pocos: 'solo 1 o 2 si aportan mucho', auto: 'los que ayuden de verdad a entender los datos', muchos: 'siempre que haya cifras, representa los datos con gráficos' }[c.charts]) + '. Tipos permitidos: ' + [...c.kinds].join(', ') + '.',
+    c.onlyData ? 'REGLA CRÍTICA: usa SOLO cifras y datos presentes en el material aportado. Si faltan datos, NO inventes cifras: usa diapositivas de texto o dilo.' : 'Si faltan datos puedes usar cifras ilustrativas, indicándolo como «dato ilustrativo».', c.cite ? 'Pon en «fuente» de cada diapositiva con datos de dónde salen (nombre del documento o apunte).' : '',
+    [...c.extras].length ? 'Incluye además: ' + [...c.extras].map((k) => (EXTRAS.find((e) => e[0] === k) || [])[1]).join(', ') + '.' : '', c.free.trim() ? 'Indicaciones extra del estudiante: ' + c.free.trim() : ''
+  ].filter(Boolean).join('\n');
+  const imgNote = (c) => { const l = imgList(c); return l.length && c.useImgs ? '\nIMÁGENES DISPONIBLES (usa su id en el campo «imagen» donde encajen; cada una como mucho una vez): ' + l.map((f) => f.id + ' = «' + f.name + '»').join('; ') : ''; };
+  const SCHEMA = `Cada diapositiva es un objeto con "layout" y los campos de ese diseño. Diseños y campos:
+- "portada": kicker (texto pequeño: asignatura/centro), title, subtitle, kpis (0-3 de {etiqueta,valor,detalle} con cifras de impacto), imagen (id opcional)
+- "seccion": numero, title, subtitle
+- "puntos": title, puntos (3-6 de {t: idea corta en negrita, d: explicación breve}), imagen (id opcional), nota (opcional: interpretación)
+- "kpis": title, cards (2-8 de {etiqueta, valor (cifra con unidad), detalle}), nota
+- "tabla": title, columnas (2-6), filas (arrays de celdas; una celda puede ser {"v":"12 %","tono":"ok"|"mal"} para marcar si cumple), nota
+- "grafico": title, grafico {tipo: "barras"|"barras_h"|"lineas"|"circular"|"apiladas", titulo, etiquetas[], series[{nombre, valores[]}] (números reales), unidad}, grafico2 (opcional, igual), destacados (0-3 de {etiqueta, texto, tono:"ok"|"mal"|"info"}), nota
+- "imagen": title, imagen (id), pie
+- "columnas": title, izquierda {titulo, puntos[]}, derecha {titulo, puntos[]}
+- "destacado": frase, autor
+- "conclusiones": title, puntos (3-5 de {t,d}), destacados (0-3)
+Todas admiten "fuente" (de dónde salen los datos) y "notas" (guion del orador, 2-4 frases).`;
+  const STYLE = 'Criterio de diseño: un mensaje por diapositiva; el título afirma la idea (no solo el tema, p. ej. «Los gastos pesan menos»); sin párrafos largos; números con unidad y formato español; no repitas contenido entre diapositivas.';
+  async function aiOutline(c, mat, signal) {
+    const p = 'Eres un diseñador de presentaciones académicas y profesionales con muy buen criterio. Propón el ÍNDICE de la presentación.\n\n' + brief(c) + imgNote(c) + '\n\n' + STYLE + '\n\nDevuelve SOLO JSON válido (sin texto alrededor):\n{"titulo":"título final","subtitulo":"","diapositivas":[{"layout":"portada|seccion|puntos|kpis|tabla|grafico|imagen|columnas|destacado|conclusiones","titulo":"título de la diapositiva","tema":"qué cuenta y qué datos/gráfico usará, en 1-2 frases","imagen":"id opcional"}]}\nLa primera es la portada y la última, conclusiones o cierre.\n\nMATERIAL:\n"""\n' + (mat.text || '(sin material: usa tu conocimiento general con cautela)').slice(0, 90000) + '\n"""';
+    const o = parseJSON(await ask(p, { signal, images: c.useImgs ? imgList(c).slice(0, 6).map((f) => IM[f.id].blob) : [], tier: 'default' }));
+    const ds = (o.diapositivas || o.slides || []).filter((d) => d && (d.titulo || d.title)).slice(0, 40).map((d) => ({ id: uid(), layout: LAY.some((l) => l[0] === d.layout) ? d.layout : 'puntos', titulo: String(d.titulo || d.title).slice(0, 140), tema: String(d.tema || d.topic || '').slice(0, 400), imagen: d.imagen && IM[d.imagen] ? d.imagen : '' }));
+    if (!ds.length) throw { code: 'invalid_json' }; return { title: String(o.titulo || o.title || c.title || c.topic || 'Presentación').slice(0, 120), subtitle: String(o.subtitulo || ''), items: ds };
+  }
+  async function aiSuggest(c, outline, mat, signal) {
+    const p = 'Tengo este índice de presentación:\n' + outline.map((d, i) => (i + 1) + '. [' + d.layout + '] ' + d.titulo + ' — ' + d.tema).join('\n') + '\n\n' + brief(c) + '\n\nPropón 5 diapositivas ADICIONALES que mejorarían la presentación y que no estén ya cubiertas (ejemplos: comparativa, caso práctico, ratios, riesgos, glosario, cronología…), basadas en el material. Devuelve SOLO JSON: [{"layout":"puntos|kpis|tabla|grafico|columnas|destacado|imagen","titulo":"","tema":""}]\n\nMATERIAL:\n"""\n' + (mat.text || '').slice(0, 40000) + '\n"""';
+    const a = parseJSON(await ask(p, { signal, tier: 'quick' })); return (Array.isArray(a) ? a : (a.diapositivas || [])).slice(0, 6).filter((d) => d && d.titulo).map((d) => ({ id: uid(), layout: LAY.some((l) => l[0] === d.layout) ? d.layout : 'puntos', titulo: String(d.titulo).slice(0, 140), tema: String(d.tema || '').slice(0, 400), imagen: '' }));
+  }
+  async function aiSlides(c, title, outline, mat, onProg, signal) {
+    const out = [], B = 5; const ctxIdx = outline.map((d, i) => (i + 1) + '. [' + d.layout + '] ' + d.titulo).join('\n');
+    for (let i = 0; i < outline.length; i += B) {
+      const grp = outline.slice(i, i + B); onProg(i, outline.length, grp[0].titulo);
+      const p = 'Eres un diseñador de presentaciones con muy buen criterio. Escribe el CONTENIDO de estas diapositivas de la presentación «' + title + '».\n\n' + brief(c) + imgNote(c) + '\n\nÍNDICE COMPLETO (para coherencia):\n' + ctxIdx + '\n\nESCRIBE SOLO las diapositivas ' + (i + 1) + ' a ' + (i + grp.length) + ':\n' + grp.map((d, k) => (i + k + 1) + '. layout «' + d.layout + '» · ' + d.titulo + ' — ' + d.tema + (d.imagen ? ' · imagen ' + d.imagen : '')).join('\n') + '\n\n' + SCHEMA + '\n' + STYLE + (c.notes ? '\nIncluye "notas" del orador en cada diapositiva.' : '\nNo incluyas "notas".') + '\n\nDevuelve SOLO un array JSON con exactamente ' + grp.length + ' objetos, en ese orden.\n\nMATERIAL:\n"""\n' + (mat.text || '(sin material)').slice(0, 100000) + '\n"""';
+      let arr; try { arr = parseJSON(await ask(p, { signal, tier: 'default', images: c.useImgs ? grp.map((d) => d.imagen).filter((x) => x && IM[x]).map((x) => IM[x].blob) : [] })); } catch (e) { if (e && e.code === 'cancelled') throw e; arr = null; }
+      if (!Array.isArray(arr)) arr = arr && arr.diapositivas ? arr.diapositivas : [];
+      grp.forEach((d, k) => { const s = arr[k] && typeof arr[k] === 'object' ? arr[k] : { layout: 'puntos', title: d.titulo, puntos: [{ t: d.tema || d.titulo, d: '' }] }; if (!LAY.some((l) => l[0] === s.layout)) s.layout = d.layout; if (!s.title && d.titulo && s.layout !== 'destacado') s.title = d.titulo; if (d.imagen && !s.imagen) s.imagen = d.imagen; if (s.imagen && !IM[s.imagen]) delete s.imagen; out.push(s); });
+    }
+    onProg(outline.length, outline.length, ''); return out;
+  }
+  /* ---------- persistencia ---------- */
+  async function saveDeck(now) {
+    const d = Z.deck; if (!d) return; clearTimeout(Z.saveT); const run = async () => {
+      d.updatedAt = Date.now(); const imgs = [];
+      for (const id of Object.keys(d.imgIds || {})) { const im = IM[id]; if (!im) continue; if (!im.url && typeof assets !== 'undefined' && assets && im.blob) { try { const r = await assets.upload(im.blob); im.url = r.url; } catch (e) {} } imgs.push({ id, name: im.name, w: im.w, h: im.h, ...(im.url ? { url: im.url } : { data: im.data.length < 220000 ? im.data : '' }) }); }
+      const doc = { subjectId: d.sid || '', subjectName: (state.subjects[d.sid] || {}).name || '', title: d.title, mode: 'studio', status: 'ready', slides: d.slides, theme: d.theme, fmt: d.fmt || 'pptx', images: imgs, outline: d.outline || [], messages: (Z.chat || []).slice(-30), slideCount: d.slides.length, version: 1, createdAt: d.createdAt || Date.now(), updatedAt: d.updatedAt, req: null, previews: [] };
+      try { await put0('decks/' + d.id, doc); } catch (e) {}
+    };
+    if (now) return run(); Z.saveT = setTimeout(run, 900);
+  }
+  async function loadImgsFrom(list) { for (const im of list || []) { if (IM[im.id] && IM[im.id].data) continue; try { if (im.data) { IM[im.id] = { name: im.name, data: im.data, w: im.w, h: im.h, url: im.url }; } else if (im.url) { const r = await fetch(im.url), b = await r.blob(), rr = await readImg(new File([b], im.name, { type: b.type }), 1600); IM[im.id] = { name: im.name, ...rr, url: im.url }; } } catch (e) {} } }
+  /* ---------- armazón ---------- */
+  function shell() { let o = document.getElementById('dkStudio'); if (!o) { o = el('div', { class: 'dk-ov', id: 'dkStudio', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Estudio de presentaciones' }); document.body.append(o); Z.ov = o; } return o; }
+  function closeStudio() { const o = document.getElementById('dkStudio'); if (o) o.remove(); Z.ov = null; document.removeEventListener('keydown', onKey, true); if (Z.deck) saveDeck(true); if (Z.from === 'list' && Z.sid) { try { spGo(Z.sid, 'presentaciones'); } catch (e) {} } }
+  const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.dk-pres')) { if (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { document.activeElement.blur(); return; } } };
+  const steps = (cur) => el('div', { class: 'dk-steps' }, [['cfg', '1 Encargo'], ['idx', '2 Índice'], ['fmt', '3 Formato'], ['view', '4 Resultado']].map(([k, l]) => el('span', { class: k === cur ? 'on' : '' }, l)));
+  const bar = (title, back) => el('div', { class: 'dk-bar' }, el('button', { class: 'btn sm', type: 'button', onclick: back || closeStudio }, '‹ ' + (back ? 'Atrás' : 'Cerrar')), el('b', { style: 'flex:1;min-width:120px', text: title }), steps(Z.phase));
+  const seg = (cur, list, on) => el('div', { class: 'dk-seg' }, list.map(([v, l]) => el('button', { type: 'button', 'aria-pressed': String(cur() === v), onclick: () => { on(v); paintCfg(true); } }, l)));
+  const chipSet = (set, list, after) => el('div', { class: 'dk-seg' }, list.map(([v, l]) => el('button', { type: 'button', 'aria-pressed': String(set.has(v)), onclick: (e) => { if (set.has(v)) set.delete(v); else set.add(v); e.currentTarget.setAttribute('aria-pressed', String(set.has(v))); if (after) after(); } }, l)));
+  const fld = (l, node, hint) => el('div', { class: 'dk-f' }, el('b', { text: l }), node, hint ? el('p', { class: 'dk-sub', text: hint }) : null);
+  /* ---------- 1 · Encargo ---------- */
+  let dict = null;
+  function dictBtn(ta, c) {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if (!SR) return null;
+    const b = el('button', { class: 'btn sm', type: 'button', 'aria-pressed': 'false' }, '🎤 Dictar');
+    b.onclick = () => { if (dict) { try { dict.stop(); } catch (e) {} dict = null; b.textContent = '🎤 Dictar'; return; } try { const r = new SR(); r.lang = 'es-ES'; r.continuous = true; r.interimResults = false; r.onresult = (ev) => { for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) { c.topic = (c.topic ? c.topic + ' ' : '') + ev.results[i][0].transcript.trim(); ta.value = c.topic; } }; r.onend = () => { dict = null; b.textContent = '🎤 Dictar'; }; r.onerror = () => { dict = null; b.textContent = '🎤 Dictar'; window.toast('No pude usar el micrófono aquí.'); }; r.start(); dict = r; b.textContent = '⏹ Parar'; } catch (e) { window.toast('El dictado no está disponible en este navegador.'); } };
+    return b;
+  }
+  function paintCfg(keep) {
+    const o = shell(), c = Z.cfg, sc = keep ? (o.querySelector('.dk-page') || {}).scrollTop || 0 : 0; o.replaceChildren(); Z.phase = 'cfg';
+    const subj = subjList(), s = c.sid && state.subjects[c.sid];
+    const topic = el('textarea', { rows: 4, maxlength: 2000, placeholder: 'Ej.: Presentación para mi exposición de Dirección Financiera sobre el análisis económico-financiero de IAG: balance, cuenta de resultados y cuadro de mando integral.', oninput: (e) => { c.topic = e.target.value; } }); topic.value = c.topic;
+    const fi = el('input', { type: 'file', multiple: true, hidden: true, accept: '.pdf,.docx,.doc,.pptx,.txt,.md,.csv,.xlsx,.odt,image/*,audio/*', onchange: async (e) => { const f = Array.from(e.target.files || []); e.target.value = ''; await addFiles(f); paintCfg(true); } });
+    const sec1 = el('div', { class: 'dk-sec' }, el('h3', { text: '1 · ¿De qué quieres la presentación?' }), fld('Tema y qué quieres contar', topic), el('div', { class: 'dk-row' }, dictBtn(topic, c), el('span', { class: 'dk-sub', text: 'Puedes escribirlo o dictarlo.' })),
+      fld('Título (opcional)', el('input', { type: 'text', maxlength: 120, placeholder: 'Si lo dejas vacío, lo propone la IA', value: c.title, oninput: (e) => { c.title = e.target.value; } })),
+      fld('Para qué es', seg(() => c.purpose, PURP, (v) => { c.purpose = v; })), fld('Público (opcional)', el('input', { type: 'text', maxlength: 100, placeholder: 'Ej.: profesor y compañeros de 3.º de ADE', value: c.aud, oninput: (e) => { c.aud = e.target.value; } })));
+    const srcOpts = []; if (subj.length) srcOpts.push(['notes', 'Mis apuntes']); srcOpts.push(['text', 'Solo lo que escriba']);
+    const subjSel = subj.length ? fld('Asignatura', (() => { const x = el('select', { 'aria-label': 'Asignatura', onchange: () => { c.sid = x.value; c.sel = new Set(); paintCfg(true); } }, el('option', { value: '' }, 'Sin asignatura'), subj.map(([k, v]) => el('option', { value: k }, v.name))); x.value = c.sid || ''; return x; })()) : null;
+    const body = []; if (c.sid && c.source === 'notes') { try { const src = resSources(c.sid); if (src.length) { const sel = resPickSet(c.sid, src); c.sel = c.sel.size ? c.sel : sel; body.push(srcPicker(src, c.sel, (x) => { c.sel = x; }, { title: '¿De qué apuntes?' })); } else body.push(el('p', { class: 'dk-sub', text: 'Esta asignatura aún no tiene apuntes: pega texto o sube archivos.' })); } catch (e) {} }
+    const pasteTa = el('textarea', { rows: 4, maxlength: 60000, placeholder: 'Pega aquí datos, texto, tablas o cifras que quieras usar (opcional)', oninput: (e) => { c.text = e.target.value; } }); pasteTa.value = c.text;
+    const filesList = el('div', { class: 'dk-files' }, c.files.map((f, i) => el('div', { class: 'dk-file' }, f.kind === 'img' && IM[f.id] ? el('img', { src: IM[f.id].data, alt: '' }) : el('b', { text: f.kind === 'audio' ? '🎧' : '📄' }), el('span', { text: f.name + (f.kind === 'audio' ? ' (sin transcribir)' : f.kind === 'img' ? ' · foto' : '') }), el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Quitar ' + f.name, onclick: () => { c.files.splice(i, 1); paintCfg(true); } }, '×'))));
+    const sec2 = el('div', { class: 'dk-sec' }, el('h3', { text: '2 · Material de partida' }), subjSel, subj.length ? seg(() => c.source, srcOpts, (v) => { c.source = v; }) : null, ...body, fld('Texto o datos extra', pasteTa), el('div', { class: 'dk-row' }, el('button', { class: 'btn', type: 'button', onclick: () => fi.click() }, '＋ Añadir archivos, fotos o audio'), fi), c.files.length ? filesList : el('p', { class: 'dk-sub', text: 'PDF, Word, PowerPoint, Excel/CSV, texto, fotos (se pueden colocar en las diapositivas) y audio.' }));
+    const sec3 = el('div', { class: 'dk-sec' }, el('h3', { text: '3 · Extensión y estilo del texto' }), fld('Número de diapositivas', seg(() => String(c.n), [['0', 'Que decida la IA'], ['6', '6'], ['10', '10'], ['15', '15'], ['20', '20']], (v) => { c.n = +v; })), fld('Duración de la exposición', seg(() => String(c.minutes), [['5', '5 min'], ['10', '10 min'], ['15', '15 min'], ['20', '20 min'], ['30', '30 min']], (v) => { c.minutes = +v; })),
+      fld('Cantidad de texto', seg(() => c.density, [['poca', 'Muy visual'], ['media', 'Equilibrado'], ['mucha', 'Detallado']], (v) => { c.density = v; })), fld('Idioma', seg(() => c.lang, [['español', 'Español'], ['inglés', 'Inglés'], ['catalán', 'Català'], ['francés', 'Français']], (v) => { c.lang = v; })),
+      el('label', { class: 'dk-row' }, el('input', { type: 'checkbox', checked: c.notes, onchange: (e) => { c.notes = e.target.checked; } }), el('span', { text: 'Escribir notas del orador (guion) en cada diapositiva' })));
+    const sec4 = el('div', { class: 'dk-sec' }, el('h3', { text: '4 · Gráficos, tablas y datos' }), fld('¿Quieres gráficos?', seg(() => c.charts, [['no', 'Sin gráficos'], ['pocos', 'Pocos'], ['auto', 'Los necesarios'], ['muchos', 'Muchos']], (v) => { c.charts = v; })), c.charts !== 'no' ? fld('Tipos permitidos', chipSet(c.kinds, CHARTK)) : null,
+      el('label', { class: 'dk-row' }, el('input', { type: 'checkbox', checked: c.onlyData, onchange: (e) => { c.onlyData = e.target.checked; } }), el('span', { text: 'Usar solo cifras de mis fuentes (no inventar datos)' })), el('label', { class: 'dk-row' }, el('input', { type: 'checkbox', checked: c.cite, onchange: (e) => { c.cite = e.target.checked; } }), el('span', { text: 'Citar la fuente al pie de cada diapositiva' })),
+      imgList(c).length ? el('label', { class: 'dk-row' }, el('input', { type: 'checkbox', checked: c.useImgs, onchange: (e) => { c.useImgs = e.target.checked; } }), el('span', { text: 'Colocar mis fotos donde encajen' })) : null);
+    const tcards = Object.entries(E.THEMES).map(([k, t]) => el('button', { type: 'button', 'aria-pressed': String(c.theme === k), onclick: () => { c.theme = k; paintCfg(true); } }, el('div', { class: 'dk-sw' }, el('i', { style: 'background:' + t[1] }), el('i', { style: 'background:' + t[2] }), el('i', { style: 'background:' + t[3] })), t[0]));
+    tcards.push(el('button', { type: 'button', 'aria-pressed': String(c.theme === 'custom'), onclick: () => { c.theme = 'custom'; paintCfg(true); } }, el('div', { class: 'dk-sw' }, el('i', { style: 'background:' + c.primary }), el('i', { style: 'background:' + E.mix(c.primary, '#ffffff', 0.94) }), el('i', { style: 'background:' + c.accent })), 'Personalizado'));
+    const sec5 = el('div', { class: 'dk-sec' }, el('h3', { text: '5 · Colores y tipografía' }), el('div', { class: 'dk-th' }, tcards),
+      c.theme === 'custom' ? el('div', { class: 'dk-row' }, el('label', { class: 'dk-row' }, 'Principal ', el('input', { type: 'color', value: c.primary, oninput: (e) => { c.primary = e.target.value; } })), el('label', { class: 'dk-row' }, 'Acento ', el('input', { type: 'color', value: c.accent, oninput: (e) => { c.accent = e.target.value; } }))) : null,
+      fld('Tipografía', seg(() => c.font, [['elegante', 'Elegante (títulos serif)'], ['moderna', 'Moderna'], ['clasica', 'Clásica']], (v) => { c.font = v; })), fld('Portada', seg(() => c.cover, [['oscura', 'Oscura'], ['clara', 'Clara']], (v) => { c.cover = v; })));
+    const free = el('textarea', { rows: 3, placeholder: 'Ej.: «Empieza con una pregunta», «incluye una comparativa con Lufthansa», «tono formal»…', oninput: (e) => { c.free = e.target.value; } }); free.value = c.free;
+    const sec6 = el('div', { class: 'dk-sec' }, el('h3', { text: '6 · Qué incluir y detalles' }), fld('Añadir también', chipSet(c.extras, EXTRAS)), fld('Indicaciones libres', free));
+    const go = el('button', { class: 'btn primary dk-go', type: 'button', disabled: !!Z.busy, onclick: startOutline }, Z.busy ? Z.busy : 'Crear el índice →');
+    o.append(bar('Nueva presentación' + (s ? ' · ' + s.name : '')), el('div', { class: 'dk-page' }, el('div', { class: 'dk-wrap' }, sec1, sec2, sec3, sec4, sec5, sec6, el('p', { class: 'dk-sub', text: 'Ahora crearé un índice para que lo revises antes de hacer la presentación. Tus preferencias se recuerdan para la próxima.' }), go)));
+    if (sc) o.querySelector('.dk-page').scrollTop = sc;
+  }
+  async function startOutline() {
+    const c = Z.cfg; if (!c.topic.trim() && !c.title.trim() && !c.files.some((f) => f.kind === 'doc') && !c.text.trim() && !(c.sid && c.source === 'notes')) { window.toast('Cuéntame de qué quieres la presentación o añade material.'); return; }
+    saveCfg(c); Z.busy = 'Pensando el índice…'; paintCfg(true); Z.ctl = new AbortController();
+    try {
+      Z.mat = await material(c, (t) => window.toast(t)); const o = await aiOutline(c, Z.mat, Z.ctl.signal); Z.busy = ''; Z.outline = o.items; Z.title = o.title; Z.subtitle = o.subtitle; Z.sugg = []; paintIdx();
+    } catch (e) { Z.busy = ''; paintCfg(true); if (!e || e.code !== 'cancelled') window.toast(typeof aiErr === 'function' ? aiErr(e) : 'No he podido crear el índice. Inténtalo de nuevo.'); }
+  }
+  /* ---------- 2 · Índice editable ---------- */
+  function paintIdx(keepScroll) {
+    const o = shell(), sc = keepScroll ? (o.querySelector('.dk-page') || {}).scrollTop || 0 : 0; o.replaceChildren(); Z.phase = 'idx'; const c = Z.cfg, ol = Z.outline; let dragI = -1;
+    const mv = (i, j) => { if (j < 0 || j >= ol.length) return; ol.splice(j, 0, ol.splice(i, 1)[0]); paintIdx(true); };
+    const rows = ol.map((d, i) => {
+      const ta = el('textarea', { rows: 2, placeholder: 'Qué cuenta esta diapositiva…', oninput: (e) => { d.tema = e.target.value; e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px'; } }); ta.value = d.tema || '';
+      const row = el('div', { class: 'dk-ix', draggable: 'false', 'data-i': i },
+        el('div', { class: 'n', title: 'Arrastra para ordenar', onpointerdown: (e) => { dragI = i; row.draggable = true; } }, String(i + 1)),
+        el('div', { class: 'm' }, el('input', { type: 'text', 'aria-label': 'Título de la diapositiva ' + (i + 1), value: d.titulo, oninput: (e) => { d.titulo = e.target.value; } }), ta,
+          el('div', { class: 'dk-row' }, (() => { const s = el('select', { 'aria-label': 'Tipo de diapositiva', onchange: () => { d.layout = s.value; } }, LAY.map(([v, l]) => el('option', { value: v }, l))); s.value = d.layout; s.style.width = 'auto'; return s; })(), imgList(c).length ? (() => { const s = el('select', { 'aria-label': 'Imagen', onchange: () => { d.imagen = s.value; } }, el('option', { value: '' }, 'Sin foto'), imgList(c).map((f) => el('option', { value: f.id }, '📷 ' + f.name.slice(0, 22)))); s.value = d.imagen || ''; s.style.width = 'auto'; return s; })() : null)),
+        el('div', { class: 'a' }, el('button', { type: 'button', 'aria-label': 'Subir', disabled: i === 0, onclick: () => mv(i, i - 1) }, '↑'), el('button', { type: 'button', 'aria-label': 'Bajar', disabled: i === ol.length - 1, onclick: () => mv(i, i + 1) }, '↓'), el('button', { type: 'button', 'aria-label': 'Añadir debajo', onclick: () => { ol.splice(i + 1, 0, { id: uid(), layout: 'puntos', titulo: 'Nueva diapositiva', tema: '', imagen: '' }); paintIdx(true); } }, '＋'), el('button', { type: 'button', 'aria-label': 'Quitar', disabled: ol.length <= 1, onclick: () => { ol.splice(i, 1); paintIdx(true); } }, '🗑')));
+      row.addEventListener('dragstart', (e) => { dragI = i; try { e.dataTransfer.setData('text/plain', String(i)); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} });
+      row.addEventListener('dragover', (e) => { e.preventDefault(); row.classList.add('drop'); }); row.addEventListener('dragleave', () => row.classList.remove('drop'));
+      row.addEventListener('drop', (e) => { e.preventDefault(); row.classList.remove('drop'); if (dragI >= 0 && dragI !== i) mv(dragI, i); dragI = -1; }); row.addEventListener('dragend', () => { row.draggable = false; });
+      setTimeout(() => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; }, 0); return row;
+    });
+    const instr = el('input', { type: 'text', placeholder: 'Ej.: «más corto», «añade una parte de riesgos», «empieza por el balance»…', 'aria-label': 'Indicación para rehacer el índice' });
+    const redo = el('button', { class: 'btn', type: 'button', disabled: !!Z.busy, onclick: async () => { Z.busy = 'rehaciendo'; paintIdx(true); try { const c2 = { ...c, free: (c.free + ' ' + instr.value).trim() }; Z.cfg.free = c2.free; const r = await aiOutline(c2, Z.mat, new AbortController().signal); Z.outline = r.items; Z.title = r.title; } catch (e) { window.toast('No he podido rehacer el índice.'); } Z.busy = ''; paintIdx(true); } }, '✨ Rehacer índice');
+    const sug = el('button', { class: 'btn', type: 'button', disabled: !!Z.busy, onclick: async () => { Z.busy = 'sug'; paintIdx(true); try { Z.sugg = await aiSuggest(c, Z.outline, Z.mat, new AbortController().signal); if (!Z.sugg.length) window.toast('No se me ocurren más temas útiles ahora.'); } catch (e) { window.toast('No he podido proponer temas ahora.'); } Z.busy = ''; paintIdx(true); } }, '💡 Proponer más temas');
+    const sugBox = (Z.sugg || []).length ? el('div', { class: 'dk-sec' }, el('h3', { text: 'Temas propuestos' }), el('div', { class: 'dk-sug' }, Z.sugg.map((g, k) => el('div', { class: 'dk-sg' }, el('div', {}, el('b', { text: g.titulo }), g.tema), el('button', { class: 'btn sm primary', type: 'button', onclick: () => { Z.outline.push(g); Z.sugg.splice(k, 1); paintIdx(true); } }, '＋ Añadir'), el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Descartar', onclick: () => { Z.sugg.splice(k, 1); paintIdx(true); } }, '×'))))) : null;
+    const titleIn = el('input', { type: 'text', maxlength: 120, 'aria-label': 'Título de la presentación', value: Z.title || '', oninput: (e) => { Z.title = e.target.value; } });
+    o.append(bar('Índice de la presentación', () => paintCfg(true)), el('div', { class: 'dk-page' }, el('div', { class: 'dk-wrap' },
+      el('div', { class: 'dk-sec' }, el('h3', { text: 'Este es el índice. Cámbialo como quieras' }), el('p', { class: 'dk-sub', text: 'Edita títulos y temas, cambia el tipo de diapositiva, ordena con ↑ ↓ (o arrastrando el número), quita o añade. ' + ol.length + ' diapositivas · ~' + Math.max(1, Math.round(ol.length * (c.minutes / Math.max(1, c.n || ol.length)))) + ' min.' }), fld('Título de la presentación', titleIn)),
+      ...rows, el('div', { class: 'dk-sec' }, el('div', { class: 'dk-row' }, el('button', { class: 'btn', type: 'button', onclick: () => { ol.push({ id: uid(), layout: 'puntos', titulo: 'Nueva diapositiva', tema: '', imagen: '' }); paintIdx(true); setTimeout(() => { const p = $$('.dk-page'); if (p) p.scrollTop = p.scrollHeight; }, 30); } }, '＋ Añadir diapositiva'), sug), el('div', { class: 'dk-row' }, instr, redo), Z.busy ? el('p', { class: 'dk-sub', role: 'status', text: Z.busy === 'sug' ? 'Buscando temas que faltan…' : 'Rehaciendo el índice…' }) : null), sugBox,
+      el('button', { class: 'btn primary dk-go', type: 'button', onclick: () => { Z.title = titleIn.value || Z.title; paintFmt(); } }, 'Siguiente: elegir formato →'))));
+    if (sc) o.querySelector('.dk-page').scrollTop = sc;
+  }
+  /* ---------- 3 · Formato ---------- */
+  function paintFmt() {
+    const o = shell(), c = Z.cfg; o.replaceChildren(); Z.phase = 'fmt';
+    const card = (v, ico, t, d) => el('button', { type: 'button', class: 'dk-chip', style: 'display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px;flex:1 1 200px', 'aria-pressed': String(c.fmt === v), onclick: () => { c.fmt = v; paintFmt(); } }, el('span', { style: 'font-size:26px', text: ico }), el('b', { text: t }), el('small', { style: 'font-weight:500;opacity:.85', text: d }));
+    o.append(bar('Formato de la presentación', paintIdx), el('div', { class: 'dk-page' }, el('div', { class: 'dk-wrap' }, el('div', { class: 'dk-sec' }, el('h3', { text: '¿En qué formato la quieres?' }), el('p', { class: 'dk-sub', text: 'Antes de descargar nada te enseño cómo ha quedado y podrás pedir cambios. Esto solo decide qué archivo te preparo.' }),
+      el('div', { class: 'dk-row' }, card('pptx', '🟧', 'PowerPoint (.pptx)', 'Editable en PowerPoint, Keynote y Google Slides.'), card('pdf', '📕', 'PDF', 'Para entregar o proyectar tal cual.'), card('both', '📦', 'Los dos', 'PDF y PowerPoint.'))),
+      el('button', { class: 'btn primary dk-go', type: 'button', onclick: startGen }, '✨ Crear la presentación'))));
+  }
+  /* ---------- generación (sigue aunque cierres la ventana) ---------- */
+  async function startGen() {
+    const c = Z.cfg, id = uid(), outline = Z.outline.map((d) => ({ ...d })), title = Z.title || 'Presentación'; saveCfg(c); const ctl = new AbortController(); Z.ctl = ctl; const job = { id, p: 0, label: 'Empezando…' }; Z.job = job;
+    const o = shell(); o.replaceChildren(); Z.phase = 'gen';
+    const prog = el('i', { style: 'width:3%' }), lab = el('p', { role: 'status', text: 'Empezando…' });
+    o.append(bar('Creando la presentación', null), el('div', { class: 'dk-page' }, el('div', { class: 'dk-gen' }, el('div', { style: 'font-size:46px', text: '✨' }), el('h2', { style: 'margin:0', text: title }), el('div', { class: 'dk-prog' }, prog), lab, el('p', { class: 'dk-sub', text: 'Puedes cerrar esta ventana: seguiré en segundo plano y te aviso arriba cuando esté lista.' }), el('button', { class: 'btn', type: 'button', onclick: () => { try { ctl.abort(); } catch (e) {} } }, 'Detener'))));
+    try {
+      const mat = Z.mat || await material(c, () => {}); const slides = await aiSlides(c, title, outline, mat, (i, n, t) => { job.p = i / n; job.label = t ? 'Diapositiva ' + (i + 1) + ' de ' + n + ' · ' + t : 'Rematando…'; const p2 = $$('#dkStudio .dk-prog i'), l2 = $$('#dkStudio .dk-gen p[role=status]'); if (p2) p2.style.width = Math.max(3, job.p * 100) + '%'; if (l2) l2.textContent = job.label; }, ctl.signal);
+      if (slides[0] && slides[0].layout === 'portada') { if (!slides[0].title) slides[0].title = title; if (!slides[0].subtitle && Z.subtitle) slides[0].subtitle = Z.subtitle; if (!slides[0].kicker && c.sid && state.subjects[c.sid]) slides[0].kicker = state.subjects[c.sid].name; }
+      const imgIds = {}; slides.forEach((s) => { if (s.imagen && IM[s.imagen]) imgIds[s.imagen] = 1; }); c.files.filter((f) => f.kind === 'img').forEach((f) => { imgIds[f.id] = 1; });
+      const deck = { id, sid: c.sid, title, slides, theme: { key: c.theme, primary: c.primary, accent: c.accent, font: c.font, cover: c.cover }, fmt: c.fmt, imgIds, outline, createdAt: Date.now() };
+      const visible = document.getElementById('dkStudio') && Z.phase === 'gen' && Z.job === job; Z.deck = deck; Z.chat = []; Z.cur = 0; Z.job = null; await saveDeck(true);
+      if (visible) paintView(); else window.faNotify({ kind: 'ai', title: 'Tu presentación está lista', msg: title + ' · ' + slides.length + ' diapositivas', ms: 14000, actions: [{ label: 'Verla', fn: () => openDeck(id) }] });
+    } catch (e) { Z.job = null; const ov2 = document.getElementById('dkStudio'); if (e && e.code === 'cancelled') { if (ov2) paintFmt(); return; } window.faNotify({ kind: 'error', title: 'No he podido crear la presentación', msg: typeof aiErr === 'function' ? aiErr(e) : 'Inténtalo de nuevo.', actions: [{ label: 'Reintentar', fn: () => { Z.from = Z.from || ''; paintFmt(); } }] }); if (ov2) paintFmt(); }
+  }
+
+  /* ---------- 4 · Visor + asistente ---------- */
+  const lines = (s) => String(s || '').split('\n').map((x) => x.trim()).filter(Boolean);
+  const ptsToTxt = (p) => (p || []).map((x) => (typeof x === 'string' ? x : (x.t || '') + (x.d ? ' :: ' + x.d : ''))).join('\n');
+  const txtToPts = (t) => lines(t).map((l) => { const i = l.indexOf('::'); return i > 0 ? { t: l.slice(0, i).trim(), d: l.slice(i + 2).trim() } : { t: l, d: '' }; });
+  const chartToTxt = (g) => g && g.etiquetas ? ['|' + (g.etiquetas || []).join('|')].concat((g.series || []).map((s) => (s.nombre || '') + '|' + (s.valores || []).join('|'))).join('\n') : '';
+  const txtToChart = (t, base) => { const ls = lines(t); if (!ls.length) return base; const lab = ls[0].split('|').slice(1).map((x) => x.trim()); return { ...(base || {}), etiquetas: lab, series: ls.slice(1).map((l) => { const p = l.split('|'); return { nombre: (p[0] || '').trim(), valores: lab.map((_, j) => Number(String(p[j + 1] || '0').replace(',', '.')) || 0) }; }) }; };
+  const tableToTxt = (s) => [(s.columnas || []).join('|')].concat((s.filas || []).map((r) => r.map((c) => (c && typeof c === 'object' ? (c.v || '') + (c.tono ? '{' + c.tono + '}' : '') : c)).join('|'))).join('\n');
+  const txtToTable = (t) => { const ls = lines(t); return { columnas: (ls[0] || '').split('|').map((x) => x.trim()), filas: ls.slice(1).map((l) => l.split('|').map((c) => { const m = /^(.*)\{(ok|mal)\}\s*$/.exec(c.trim()); return m ? { v: m[1].trim(), tono: m[2] } : c.trim(); })) }; };
+  const cardsToTxt = (cs) => (cs || []).map((c) => [c.etiqueta || '', c.valor || '', c.detalle || ''].join(' | ')).join('\n');
+  const txtToCards = (t) => lines(t).map((l) => { const p = l.split('|').map((x) => x.trim()); return { etiqueta: p[0] || '', valor: p[1] || '', detalle: p[2] || '' }; });
+  const persist = () => saveDeck(false);
+  const sceneFor = (i) => E.sceneOf(Z.deck.slides[i], i, Z.deck.slides.length, Z.deck, IM);
+  let mainT = 0;
+  function drawMain() { clearTimeout(mainT); mainT = setTimeout(async () => { const cv = $$('#dkMain'); if (!cv || !Z.deck) return; const w = Math.min(1600, Math.round((cv.parentNode.clientWidth || 800) * (window.devicePixelRatio || 1))); await E.renderTo(cv, sceneFor(Z.cur), Math.max(640, w)); const t = $$('.dk-tn[data-i="' + Z.cur + '"] canvas'); if (t) await E.renderTo(t, sceneFor(Z.cur), 300); }, 60); }
+  async function drawThumbs() { const d = Z.deck; for (let i = 0; i < d.slides.length; i++) { const t = $$('.dk-tn[data-i="' + i + '"] canvas'); if (t) await E.renderTo(t, sceneFor(i), 300); } }
+  function themeSwatches() {
+    const d = Z.deck; const bx = el('div', { class: 'dk-sec', style: 'max-width:1100px;margin:0 auto;width:100%;box-sizing:border-box' }, el('h3', { text: 'Colores y tipografía' }), el('div', { class: 'dk-th' }, [...Object.entries(E.THEMES).map(([k, t]) => el('button', { type: 'button', 'aria-pressed': String(d.theme.key === k), onclick: () => { d.theme = { ...d.theme, key: k }; persist(); paintView(true); } }, el('div', { class: 'dk-sw' }, el('i', { style: 'background:' + t[1] }), el('i', { style: 'background:' + t[2] }), el('i', { style: 'background:' + t[3] })), t[0])), el('button', { type: 'button', 'aria-pressed': String(d.theme.key === 'custom'), onclick: () => { d.theme = { ...d.theme, key: 'custom', primary: d.theme.primary || '#1d3557', accent: d.theme.accent || '#e9a23b' }; persist(); paintView(true); } }, el('div', { class: 'dk-sw' }, el('i', { style: 'background:' + (d.theme.primary || '#1d3557') }), el('i', { style: 'background:#eee' }), el('i', { style: 'background:' + (d.theme.accent || '#e9a23b') })), 'Personalizado')]),
+      d.theme.key === 'custom' ? el('div', { class: 'dk-row' }, el('label', { class: 'dk-row' }, 'Principal ', el('input', { type: 'color', value: d.theme.primary || '#1d3557', onchange: (e) => { d.theme.primary = e.target.value; persist(); paintView(true); } })), el('label', { class: 'dk-row' }, 'Acento ', el('input', { type: 'color', value: d.theme.accent || '#e9a23b', onchange: (e) => { d.theme.accent = e.target.value; persist(); paintView(true); } }))) : null,
+      el('div', { class: 'dk-seg' }, [['elegante', 'Elegante'], ['moderna', 'Moderna'], ['clasica', 'Clásica']].map(([v, l]) => el('button', { type: 'button', 'aria-pressed': String((d.theme.font || 'elegante') === v), onclick: () => { d.theme.font = v; persist(); paintView(true); } }, l))), el('div', { class: 'dk-seg' }, [['oscura', 'Portada oscura'], ['clara', 'Portada clara']].map(([v, l]) => el('button', { type: 'button', 'aria-pressed': String((d.theme.cover || 'oscura') === v), onclick: () => { d.theme.cover = v; persist(); paintView(true); } }, l))));
+    return bx;
+  }
+  function editPanel() {
+    const d = Z.deck, s = d.slides[Z.cur], L = s.layout, up = () => { persist(); drawMain(); };
+    const inp = (lbl, key, ph) => el('label', {}, lbl, el('input', { type: 'text', value: s[key] || '', placeholder: ph || '', oninput: (e) => { s[key] = e.target.value; up(); } }));
+    const ta = (lbl, val, set, ph) => el('label', {}, lbl, (() => { const t = el('textarea', { placeholder: ph || '', oninput: (e) => { set(e.target.value); up(); } }); t.value = val; return t; })());
+    const f = [el('label', {}, 'Tipo de diapositiva', (() => { const x = el('select', { onchange: () => { s.layout = x.value; paintView(true); persist(); } }, LAY.map(([v, l]) => el('option', { value: v }, l))); x.value = L; return x; })())];
+    if (L === 'destacado') f.push(inp('Frase', 'frase'), inp('Autor', 'autor')); else f.push(inp('Título', 'title'));
+    if (L === 'portada') f.push(inp('Texto superior (asignatura / centro)', 'kicker'), inp('Subtítulo', 'subtitle'));
+    if (L === 'seccion') f.push(inp('Subtítulo', 'subtitle'), inp('Número', 'numero'));
+    if (L === 'puntos' || L === 'conclusiones') f.push(ta('Ideas (una por línea; «idea :: detalle»)', ptsToTxt(s.puntos), (v) => { s.puntos = txtToPts(v); }));
+    if (L === 'kpis') f.push(ta('Indicadores (etiqueta | valor | detalle)', cardsToTxt(s.cards), (v) => { s.cards = txtToCards(v); }));
+    if (L === 'portada') f.push(ta('Cifras de portada (etiqueta | valor | detalle)', cardsToTxt(s.kpis), (v) => { s.kpis = txtToCards(v).slice(0, 3); }));
+    if (L === 'tabla') f.push(ta('Tabla (primera línea = columnas; usa | y {ok} / {mal} para colorear)', tableToTxt(s), (v) => { Object.assign(s, txtToTable(v)); }));
+    if (L === 'grafico') { const g = s.grafico || (s.grafico = { tipo: 'barras', etiquetas: [], series: [] }); f.push(el('label', {}, 'Tipo de gráfico', (() => { const x = el('select', { onchange: () => { g.tipo = x.value; up(); } }, [['barras', 'Barras'], ['barras_h', 'Barras horizontales'], ['lineas', 'Líneas'], ['circular', 'Circular'], ['apiladas', 'Apiladas']].map(([v, l]) => el('option', { value: v }, l))); x.value = g.tipo || 'barras'; return x; })()), el('label', {}, 'Título del gráfico', el('input', { type: 'text', value: g.titulo || '', oninput: (e) => { g.titulo = e.target.value; up(); } })), el('label', {}, 'Unidad', el('input', { type: 'text', value: g.unidad || '', placeholder: 'M€, %, …', oninput: (e) => { g.unidad = e.target.value; up(); } })), ta('Datos (1.ª línea: |etiqueta1|etiqueta2…; luego serie|v1|v2…)', chartToTxt(g), (v) => { s.grafico = txtToChart(v, g); })); }
+    if (L === 'columnas') { const a = s.izquierda || (s.izquierda = {}), b = s.derecha || (s.derecha = {}); f.push(el('label', {}, 'Columna izquierda · título', el('input', { type: 'text', value: a.titulo || '', oninput: (e) => { a.titulo = e.target.value; up(); } })), ta('Columna izquierda · ideas', ptsToTxt(a.puntos), (v) => { a.puntos = txtToPts(v); }), el('label', {}, 'Columna derecha · título', el('input', { type: 'text', value: b.titulo || '', oninput: (e) => { b.titulo = e.target.value; up(); } })), ta('Columna derecha · ideas', ptsToTxt(b.puntos), (v) => { b.puntos = txtToPts(v); })); }
+    if (L === 'imagen') f.push(inp('Pie de foto', 'pie'));
+    if (['puntos', 'kpis', 'tabla', 'grafico'].includes(L)) f.push(inp('Nota / interpretación', 'nota'));
+    const ids = Object.keys(IM); if (['portada', 'puntos', 'imagen'].includes(L)) f.push(el('label', {}, 'Imagen', (() => { const x = el('select', { onchange: () => { if (x.value) { s.imagen = x.value; (d.imgIds = d.imgIds || {})[x.value] = 1; } else delete s.imagen; up(); } }, el('option', { value: '' }, 'Sin imagen'), ids.map((k) => el('option', { value: k }, IM[k].name))); x.value = s.imagen || ''; return x; })(), el('input', { type: 'file', accept: 'image/*', onchange: async (e) => { const fl = e.target.files && e.target.files[0]; if (!fl) return; try { const r = await readImg(fl), id = 'img' + uid(); IM[id] = { name: fl.name, ...r }; s.imagen = id; (d.imgIds = d.imgIds || {})[id] = 1; persist(); paintView(true); } catch (x) { window.toast('No pude leer esa imagen.'); } } })));
+    f.push(inp('Fuente (pie)', 'fuente'), ta('Notas del orador', s.notas || '', (v) => { s.notas = v; }));
+    return el('div', { class: 'dk-ed' }, ...f);
+  }
+  function paintView(keep) {
+    const o = shell(), d = Z.deck; if (!d) return; const sc = keep ? ($$('.dk-main') || {}).scrollTop || 0 : 0; o.replaceChildren(); Z.phase = 'view'; Z.cur = Math.min(Z.cur, d.slides.length - 1);
+    const tIn = el('input', { class: 'dk-ttl', type: 'text', maxlength: 120, value: d.title, 'aria-label': 'Título', oninput: (e) => { d.title = e.target.value; persist(); } });
+    const prim = d.fmt === 'pdf' ? 'pdf' : 'pptx', other = prim === 'pdf' ? 'pptx' : 'pdf', nm = { pdf: 'PDF', pptx: 'PowerPoint' };
+    o.append(el('div', { class: 'dk-bar' }, el('button', { class: 'btn sm', type: 'button', onclick: closeStudio }, '‹ Cerrar'), tIn, el('button', { class: 'btn sm', type: 'button', onclick: () => present() }, '▶ Presentar'), el('button', { class: 'btn sm primary', type: 'button', onclick: () => exportAs(prim) }, '⬇ ' + nm[prim]), d.fmt === 'both' || true ? el('button', { class: 'btn sm', type: 'button', onclick: () => exportAs(other) }, nm[other]) : null, el('button', { class: 'btn sm', type: 'button', 'aria-pressed': String(Z.style), onclick: () => { Z.style = !Z.style; paintView(true); } }, '🎨 Estilo')));
+    const thumbs = el('div', { class: 'dk-th2', role: 'list' }, d.slides.map((s, i) => el('button', { class: 'dk-tn', type: 'button', 'data-i': i, 'aria-current': String(i === Z.cur), 'aria-label': 'Diapositiva ' + (i + 1), onclick: () => { Z.cur = i; paintView(true); } }, el('small', { text: String(i + 1) }), el('canvas', {}))));
+    const ops = el('div', { class: 'dk-tools' }, el('button', { class: 'btn sm', type: 'button', disabled: Z.cur === 0, onclick: () => { d.slides.splice(Z.cur - 1, 0, d.slides.splice(Z.cur, 1)[0]); Z.cur--; persist(); paintView(true); } }, '↑ Subir'), el('button', { class: 'btn sm', type: 'button', disabled: Z.cur >= d.slides.length - 1, onclick: () => { d.slides.splice(Z.cur + 1, 0, d.slides.splice(Z.cur, 1)[0]); Z.cur++; persist(); paintView(true); } }, '↓ Bajar'),
+      el('button', { class: 'btn sm', type: 'button', onclick: () => { d.slides.splice(Z.cur + 1, 0, JSON.parse(JSON.stringify(d.slides[Z.cur]))); Z.cur++; persist(); paintView(true); } }, 'Duplicar'), el('button', { class: 'btn sm', type: 'button', onclick: () => { d.slides.splice(Z.cur + 1, 0, { layout: 'puntos', title: 'Nueva diapositiva', puntos: [{ t: 'Primera idea', d: '' }] }); Z.cur++; Z.edit = true; persist(); paintView(true); } }, '＋ Nueva'),
+      el('button', { class: 'btn sm', type: 'button', disabled: d.slides.length <= 1, onclick: () => { const bk = d.slides.splice(Z.cur, 1)[0]; Z.cur = Math.min(Z.cur, d.slides.length - 1); persist(); paintView(true); window.faNotify({ kind: 'info', msg: 'Diapositiva eliminada', actions: [{ label: 'Deshacer', fn: () => { d.slides.splice(Z.cur, 0, bk); persist(); paintView(true); } }] }); } }, '🗑 Quitar'), el('button', { class: 'btn sm', type: 'button', 'aria-pressed': String(Z.edit), onclick: () => { Z.edit = !Z.edit; paintView(true); } }, '✏️ ' + (Z.edit ? 'Cerrar edición' : 'Editar texto')), el('button', { class: 'btn sm', type: 'button', onclick: () => { Z.asOpen = true; paintView(true); setTimeout(() => { const t = $$('.dk-in textarea'); if (t) { t.value = 'Rehaz la diapositiva ' + (Z.cur + 1) + ': '; t.focus(); } }, 50); } }, '✨ Pedir cambio con IA'));
+    const main = el('div', { class: 'dk-main' }, el('div', { class: 'dk-stage' }, el('canvas', { id: 'dkMain', role: 'img', 'aria-label': 'Diapositiva ' + (Z.cur + 1) + ' de ' + d.slides.length })), ops, Z.style ? themeSwatches() : null, Z.edit ? editPanel() : null, el('p', { class: 'dk-sub', style: 'text-align:center', text: 'Diapositiva ' + (Z.cur + 1) + ' de ' + d.slides.length + ' · Se guarda sola. Descarga cuando te guste.' }));
+    const right = Z.asOpen ? assistantPanel() : el('div', { class: 'dk-rail' }, el('button', { type: 'button', 'aria-label': 'Abrir el asistente', title: 'Pedirle cambios al asistente', onclick: () => { Z.asOpen = true; paintView(true); } }, '✨'), el('span', { text: 'Asistente' }));
+    o.append(el('div', { class: 'dk-view' }, thumbs, main, right)); if (sc) $$('.dk-main').scrollTop = sc; drawMain(); drawThumbs();
+    if (!o.__rs) { o.__rs = true; window.addEventListener('resize', () => { if (Z.phase === 'view') drawMain(); }); document.addEventListener('keydown', (e) => { if (Z.phase !== 'view' || !document.getElementById('dkStudio') || document.querySelector('.dk-pres') || /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || '')) return; if (e.key === 'ArrowRight' && Z.cur < Z.deck.slides.length - 1) { Z.cur++; paintView(true); } else if (e.key === 'ArrowLeft' && Z.cur > 0) { Z.cur--; paintView(true); } }); }
+  }
+  function present() {
+    const d = Z.deck; let i = Z.cur; const ov = el('div', { class: 'dk-pres', role: 'dialog', 'aria-label': 'Presentación' }), cv = el('canvas', {}); ov.append(cv, el('button', { type: 'button', onclick: end }, '✕ Salir')); document.body.append(ov);
+    const show = async () => { const w = Math.min(1920, Math.round(Math.max(window.innerWidth, window.innerHeight * 16 / 9) * (window.devicePixelRatio || 1))); await E.renderTo(cv, sceneFor(i), w); const f = Math.min(window.innerWidth / 16, window.innerHeight / 9); cv.style.width = Math.round(f * 16) + 'px'; cv.style.height = Math.round(f * 9) + 'px'; };
+    function key(e) { if (e.key === 'Escape') end(); else if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') go(1); else if (e.key === 'ArrowLeft' || e.key === 'PageUp') go(-1); }
+    function go(k) { i = Math.max(0, Math.min(d.slides.length - 1, i + k)); show(); } function end() { document.removeEventListener('keydown', key, true); try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {} ov.remove(); Z.cur = i; if (Z.phase === 'view') paintView(true); }
+    ov.onclick = (e) => { if (e.target.tagName !== 'BUTTON') go(e.clientX < window.innerWidth / 3 ? -1 : 1); }; document.addEventListener('keydown', key, true); try { ov.requestFullscreen && ov.requestFullscreen(); } catch (e) {} show();
+  }
+  /* ---------- exportar ---------- */
+  async function saveBytes(name, u8) { let dl = null; try { dl = await claude.use('downloads'); } catch (e) {} if (!dl) throw new Error('La descarga no está disponible en esta vista. Ábrela desde Claude.'); try { await dl.save({ filename: name, data: u8 }); return true; } catch (e) { if (e && e.code === 'declined') return false; throw e; } }
+  async function exportAs(fmt) {
+    const d = Z.deck, base = (d.title || 'presentacion').replace(/[^\w\- áéíóúñÁÉÍÓÚÑ]/g, '').trim().slice(0, 60) || 'presentacion'; const n = window.faNotify({ kind: 'info', title: 'Preparando ' + (fmt === 'pdf' ? 'el PDF' : 'el PowerPoint') + '…', msg: 'Un momento', sticky: true, key: 'dk-exp' });
+    try {
+      let u8; if (fmt === 'pdf') u8 = await E.buildPdf(d, IM, (i, t) => { try { n.update('Página ' + i + ' de ' + t); } catch (e) {} }); else { const p = await E.buildPptx(d, IM); u8 = new Uint8Array(await p.write({ outputType: 'arraybuffer' })); }
+      try { n.close(); } catch (e) {} const ok = await saveBytes(base + (fmt === 'pdf' ? '.pdf' : '.pptx'), u8); if (ok) window.faNotify({ kind: 'ok', title: 'Descargado', msg: base + (fmt === 'pdf' ? '.pdf' : '.pptx') });
+    } catch (e) { try { n.close(); } catch (x) {} window.faNotify({ kind: 'error', title: 'No he podido crear el archivo', msg: (e && e.message) || 'Inténtalo de nuevo.' }); }
+  }
+  /* ---------- asistente (a la derecha, comprimido) ---------- */
+  const deckJSON = () => JSON.stringify(Z.deck.slides.map((s, i) => ({ n: i + 1, ...s, notas: s.notas ? String(s.notas).slice(0, 80) : undefined }))).slice(0, 36000);
+  const QUICK = ['Mejora el diseño', 'Añade un gráfico con los datos clave', 'Reduce el texto', 'Añade una diapositiva de conclusiones', 'Traduce al inglés', 'Añade notas del orador'];
+  function assistantPanel() {
+    const msgs = el('div', { class: 'dk-msgs', role: 'log', 'aria-live': 'polite' }, (Z.chat || []).length ? Z.chat.map((m) => el('div', { class: 'dk-m ' + (m.r === 'u' ? 'u' : 'a'), text: m.t })) : el('div', { class: 'dk-m a', text: 'Hola, soy tu asistente de presentaciones. Dime qué cambiar: diseño, texto, orden, gráficos, colores… Puedo editar cualquier diapositiva.' }));
+    const ta = el('textarea', { rows: 1, placeholder: 'Pide un cambio…', 'aria-label': 'Mensaje al asistente', onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } } });
+    const send = () => { const t = ta.value.trim(); if (t) { ta.value = ''; askAssistant(t); } };
+    setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 0);
+    return el('aside', { class: 'dk-as', 'aria-label': 'Asistente de la presentación' }, el('header', {}, el('span', { text: '✨ Asistente' }), el('button', { class: 'btn sm', type: 'button', 'aria-label': 'Comprimir asistente', onclick: () => { Z.asOpen = false; paintView(true); } }, '⟩')), msgs, el('div', { class: 'dk-q' }, QUICK.map((q) => el('button', { type: 'button', onclick: () => askAssistant(q + (/^(Mejora|Reduce|Traduce|Añade notas)/.test(q) ? ' en toda la presentación' : '')) }, q))), el('div', { class: 'dk-in' }, ta, el('button', { class: 'btn primary', type: 'button', disabled: Z.chatBusy, onclick: send }, Z.chatBusy ? '…' : 'Enviar')));
+  }
+  function chatPush(r, t) { (Z.chat = Z.chat || []).push({ r, t }); const m = $$('.dk-msgs'); if (m) { m.append(el('div', { class: 'dk-m ' + (r === 'u' ? 'u' : 'a'), text: t })); m.scrollTop = m.scrollHeight; } }
+  const clean = (s) => { s = s && typeof s === 'object' ? s : {}; if (s.layout && !LAY.some((l) => l[0] === s.layout)) s.layout = 'puntos'; if (s.imagen && !IM[s.imagen]) delete s.imagen; return s; };
+  function dtools() {
+    const d = Z.deck, refresh = () => { persist(); if (Z.phase === 'view') { const cur = Z.cur; Z.cur = Math.min(cur, d.slides.length - 1); paintView(true); } }, sch = (p, r) => ({ type: 'object', properties: p, required: r || [] }), idx = (n) => { const i = Math.round(Number(n)) - 1; if (!(i >= 0 && i < d.slides.length)) throw new Error('No existe la diapositiva ' + n + ' (hay ' + d.slides.length + ').'); return i; };
+    return [
+      { name: 'ver_diapositiva', description: 'Devuelve el JSON completo de una diapositiva (n.º desde 1).', inputSchema: sch({ numero: { type: 'number' } }, ['numero']), execute: async (a) => JSON.stringify(d.slides[idx(a.numero)]).slice(0, 6000) },
+      { name: 'editar_diapositiva', description: 'Cambia campos de una diapositiva (fusiona «cambios» con la actual; los arrays se sustituyen enteros). Campos según layout: title, subtitle, kicker, puntos[{t,d}], cards[{etiqueta,valor,detalle}], columnas, filas, grafico{tipo,titulo,etiquetas,series[{nombre,valores}],unidad}, grafico2, destacados, nota, fuente, notas, imagen, layout…', inputSchema: sch({ numero: { type: 'number' }, cambios: { type: 'object' } }, ['numero', 'cambios']), execute: async (a) => { const i = idx(a.numero); d.slides[i] = clean({ ...d.slides[i], ...(a.cambios || {}) }); Z.cur = i; refresh(); return 'Diapositiva ' + (i + 1) + ' actualizada.'; } },
+      { name: 'anadir_diapositiva', description: 'Inserta una diapositiva completa (objeto con layout y sus campos) en la posición indicada (1 = al principio; omite para añadir al final).', inputSchema: sch({ posicion: { type: 'number' }, diapositiva: { type: 'object' } }, ['diapositiva']), execute: async (a) => { const p = a.posicion ? Math.max(0, Math.min(d.slides.length, Math.round(a.posicion) - 1)) : d.slides.length; d.slides.splice(p, 0, clean(a.diapositiva)); Z.cur = p; refresh(); return 'Añadida como diapositiva ' + (p + 1) + '.'; } },
+      { name: 'eliminar_diapositiva', description: 'Quita una diapositiva.', inputSchema: sch({ numero: { type: 'number' } }, ['numero']), execute: async (a) => { if (d.slides.length <= 1) throw new Error('Debe quedar al menos una diapositiva.'); const i = idx(a.numero); d.slides.splice(i, 1); refresh(); return 'Eliminada la diapositiva ' + (i + 1) + '.'; } },
+      { name: 'mover_diapositiva', description: 'Mueve una diapositiva de una posición a otra.', inputSchema: sch({ desde: { type: 'number' }, hasta: { type: 'number' } }, ['desde', 'hasta']), execute: async (a) => { const i = idx(a.desde), j = idx(a.hasta); d.slides.splice(j, 0, d.slides.splice(i, 1)[0]); Z.cur = j; refresh(); return 'Movida de la ' + (i + 1) + ' a la ' + (j + 1) + '.'; } },
+      { name: 'cambiar_estilo', description: 'Cambia el estilo de toda la presentación: tema (ejecutivo, editorial, oceano, bosque, atardecer, pizarra, vivo, custom), color_principal y color_acento en hex (con tema custom), tipografia (elegante, moderna, clasica), portada (oscura, clara).', inputSchema: sch({ tema: { type: 'string' }, color_principal: { type: 'string' }, color_acento: { type: 'string' }, tipografia: { type: 'string' }, portada: { type: 'string' } }), execute: async (a) => { const t = { ...d.theme }; const hexOk = (x) => /^#[0-9a-f]{6}$/i.test(String(x || '')); if (a.tema) { if (!(a.tema in E.THEMES) && a.tema !== 'custom') throw new Error('Tema no válido.'); t.key = a.tema; } if (hexOk(a.color_principal)) { t.primary = a.color_principal; t.key = 'custom'; } if (hexOk(a.color_acento)) { t.accent = a.color_acento; t.key = 'custom'; } if (['elegante', 'moderna', 'clasica'].includes(a.tipografia)) t.font = a.tipografia; if (['oscura', 'clara'].includes(a.portada)) t.cover = a.portada; d.theme = t; refresh(); return 'Estilo actualizado.'; } }
+    ];
+  }
+  async function askAssistant(text) {
+    if (Z.chatBusy) return; const d = Z.deck; Z.chatBusy = true; chatPush('u', text); const wait = el('div', { class: 'dk-m a', text: 'Pensando…' }); const box = $$('.dk-msgs'); if (box) { box.append(wait); box.scrollTop = box.scrollHeight; } const sb = $$('.dk-in .btn'); if (sb) sb.disabled = true;
+    const sys = 'Eres el asistente de edición de una presentación abierta en una app de estudio. Aplica lo que pida el estudiante usando SIEMPRE las herramientas (no describas cambios sin hacerlos). Diapositiva visible ahora: ' + (Z.cur + 1) + '. Puedes editar varias diapositivas seguidas. Mantén el estilo y la coherencia. Para gráficos usa solo cifras que ya estén en la presentación o en el material; si te piden datos que no tienes, pregunta o dilo, no los inventes. Idioma: el de la presentación. Al terminar responde en 1-2 frases diciendo qué has cambiado.\nTema: ' + JSON.stringify(d.theme) + '\nImágenes disponibles: ' + (Object.keys(IM).map((k) => k + '=' + IM[k].name).join('; ') || 'ninguna') + '\nESQUEMA DE DIAPOSITIVAS:\n' + SCHEMA + (Z.mat && Z.mat.text ? '\n\nMATERIAL ORIGINAL (resumen):\n' + Z.mat.text.slice(0, 20000) : '') + '\n\nPRESENTACIÓN ACTUAL (JSON):\n' + deckJSON();
+    const turns = (Z.chat || []).slice(-9, -1).map((m) => ({ role: m.r === 'u' ? 'user' : 'assistant', content: m.t })); try {
+      if (typeof sample === 'undefined' || !sample) throw { code: 'sampling_disabled' };
+      const r = await aiTry(() => sample([{ role: 'user', content: sys }, { role: 'assistant', content: 'Entendido.' }, ...turns, { role: 'user', content: text }], { cache: false, tools: dtools(), modelTier: 'default' }), { label: 'deck-chat', tries: 2 });
+      wait.remove(); chatPush('a', String((r && r.text) || 'Hecho.').trim() || 'Hecho.'); persist();
+    } catch (e) { wait.remove(); chatPush('a', typeof aiErr === 'function' ? aiErr(e) : 'No he podido hacerlo ahora. Inténtalo de nuevo.'); }
+    Z.chatBusy = false; const sb2 = $$('.dk-in .btn'); if (sb2) { sb2.disabled = false; sb2.textContent = 'Enviar'; }
+  }
+  /* ---------- API pública ---------- */
+  function open(o) {
+    o = o || {}; Z.cfg = newCfg(o); Z.sid = o.sid || ''; Z.from = o.from || 'list'; Z.deck = null; Z.busy = ''; Z.mat = null; Z.chat = []; Z.edit = false; Z.style = false; Z.asOpen = false; Object.keys(IM).forEach((k) => delete IM[k]); document.addEventListener('keydown', onKey, true); paintCfg();
+  }
+  async function openDeck(id, sid) {
+    let v = null; try { const s = await db.doc('decks/' + id).get(); v = s && typeof s.data === 'function' ? s.data() : null; } catch (e) {}
+    if (!v || !Array.isArray(v.slides)) { window.toast('No he podido abrir esa presentación.'); return; }
+    await loadImgsFrom(v.images); const imgIds = {}; (v.images || []).forEach((m) => { imgIds[m.id] = 1; });
+    Z.deck = { id, sid: v.subjectId || sid || '', title: v.title, slides: v.slides, theme: v.theme || { key: 'ejecutivo' }, fmt: v.fmt || 'pptx', imgIds, outline: v.outline || [], createdAt: v.createdAt }; Z.sid = Z.deck.sid; Z.chat = (v.messages || []).map((m) => ({ r: m.r, t: m.t })); Z.cur = 0; Z.edit = false; Z.style = false; Z.asOpen = false; Z.mat = null; Z.from = sid ? 'list' : ''; document.addEventListener('keydown', onKey, true); paintView();
+  }
+  window.dkStudio = { open, openDeck, engine: E, state: Z, IM };
+  /* ---------- Jarvis ---------- */
+  const NAMES = ['crear_presentacion'];
+  const sch2 = (p, r) => ({ type: 'object', properties: p, required: r || [] });
+  const tool = () => ({ name: 'crear_presentacion', description: 'Abre el Estudio de presentaciones (asistente completo: material, gráficos, colores, índice editable y formato PDF/PowerPoint) para crear una presentación de cualquier tema. Úsalo cuando el estudiante pida una presentación, diapositivas, un PowerPoint o un PDF de diapositivas. Puedes precompletar el tema y la asignatura.', inputSchema: sch2({ tema: { type: 'string', description: 'de qué va la presentación' }, asignatura_id: { type: 'string' }, asignatura: { type: 'string', description: 'nombre si no sabes el id' }, diapositivas: { type: 'number' }, minutos: { type: 'number' }, indicaciones: { type: 'string' } }),
+    execute: async (a) => { a = a || {}; let sid = a.asignatura_id && state.subjects[a.asignatura_id] ? a.asignatura_id : ''; if (!sid && a.asignatura) { const q = norm(a.asignatura); sid = Object.keys(state.subjects).find((k) => norm(state.subjects[k].name).includes(q) || q.includes(norm(state.subjects[k].name))) || ''; } open({ sid, topic: String(a.tema || '').slice(0, 1500), free: String(a.indicaciones || '').slice(0, 500), from: 'jarvis' }); if (a.diapositivas) Z.cfg.n = Math.min(40, Math.max(0, Math.round(a.diapositivas))); if (a.minutos) Z.cfg.minutes = Math.min(90, Math.max(1, Math.round(a.minutos))); paintCfg(); return 'He abierto el Estudio de presentaciones' + (sid ? ' para ' + state.subjects[sid].name : '') + '. El estudiante añade material, elige gráficos y colores, revisa el índice y elige PDF o PowerPoint. Dile en una frase que ya está abierto.'; } });
+  try { const b0 = window.jvxBase; window.jvxBase = function () { let all = []; try { all = b0(); } catch (e) { all = []; } return all.filter((x) => x && x.name !== 'crear_presentacion').concat([tool()]); }; } catch (e) {}
+  try { const c = AG_TOOLCAT.find((x) => x.key === 'estudio') || AG_TOOLCAT[0]; if (c) NAMES.forEach((n) => { if (!c.names.includes(n)) c.names.push(n); }); } catch (e) {}
+  try { if (Array.isArray(JV_CORE_NAMES)) NAMES.forEach((n) => { if (!JV_CORE_NAMES.includes(n)) JV_CORE_NAMES.push(n); }); } catch (e) {}
+  try { const p0 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p0(tl, text, att, BASE); if (/presentaci|diapositiv|powerpoint|pptx|slides|exposici/.test(norm(text))) { const have = new Set(r.map((x) => x.name)); r = r.concat(tl.filter((x) => NAMES.includes(x.name) && !have.has(x.name))); } return r; }; } catch (e) {}
+  try { const hint0 = window.jvxHint; window.jvxHint = function () { return hint0() + '\n\nPRESENTACIONES: si el estudiante pide una presentación, diapositivas, un PowerPoint o un PDF de diapositivas, usa crear_presentacion (abre el Estudio de presentaciones con todas las opciones). No las redactes tú en el chat.'; }; } catch (e) {}
+})();
+
+</script>
+<script id="fa-jvchart">
+/* Gráficas creadas por Jarvis y los agentes: se ven al instante en el chat, se copian y se descargan */
+(function () {
+  'use strict';
+  if (window.__jvChart) return; window.__jvChart = true;
+  const E = () => window.dkEngine;
+  const mine = [];
+  const NAMES = ['crear_grafica'];
+  const TIPOS = ['barras', 'barras_h', 'lineas', 'circular', 'apiladas'];
+  const clean = (a) => {
+    const et = (Array.isArray(a.etiquetas) ? a.etiquetas : []).map((x) => String(x == null ? '' : x)).slice(0, 12);
+    let se = (Array.isArray(a.series) ? a.series : []).slice(0, 5).map((s, i) => ({ nombre: String((s && s.nombre) || ('Serie ' + (i + 1))), valores: (Array.isArray(s && s.valores) ? s.valores : []).slice(0, et.length).map((v) => { const n = Number(String(v).replace(',', '.')); return isFinite(n) ? n : 0; }) }));
+    if (!se.length && Array.isArray(a.valores)) se = [{ nombre: String(a.titulo || 'Valores'), valores: a.valores.slice(0, et.length).map((v) => Number(v) || 0) }];
+    if (!et.length || !se.length) throw new Error('hacen falta «etiquetas» y al menos una serie con «valores» numéricos (mismo número que etiquetas)');
+    return { titulo: String(a.titulo || '').slice(0, 90), tipo: TIPOS.includes(a.tipo) ? a.tipo : 'barras', unidad: String(a.unidad || '').slice(0, 12), etiquetas: et, series: se };
+  };
+  async function toCanvas(c, width) {
+    const e = E(); if (!e) throw new Error('motor de gráficas no disponible');
+    const scene = e.sceneOf({ layout: '_chart', grafico: c.grafico, fuente: c.fuente || '' }, 0, 1, { theme: { key: c.tema || 'ejecutivo' } }, {});
+    const cv = document.createElement('canvas'); await e.renderTo(cv, scene, width || 1280); return cv;
+  }
+  const blobOf = (cv) => new Promise((ok, ko) => cv.toBlob((b) => (b ? ok(b) : ko(new Error('no se pudo generar la imagen'))), 'image/png'));
+  async function copyImg(c) {
+    try { const b = await blobOf(await toCanvas(c, 1280)); if (!navigator.clipboard || !window.ClipboardItem) throw new Error('sin portapapeles de imágenes'); await navigator.clipboard.write([new ClipboardItem({ 'image/png': b })]); window.toast('Gráfica copiada: ya puedes pegarla donde quieras.', 'ok'); }
+    catch (e) { window.toast('No he podido copiarla (' + (e.message || e) + '). Usa «Descargar PNG».'); }
+  }
+  async function dl(c) {
+    try { const b = await blobOf(await toCanvas(c, 1600)), u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = (String(c.grafico.titulo || 'grafica').normalize('NFD').replace(/[^\w ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 40) || 'grafica') + '.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+    catch (e) { window.toast('No he podido descargar la gráfica.'); }
+  }
+  function node(c) {
+    const cv = document.createElement('canvas'); cv.className = 'jvc-cv'; cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', 'Gráfica: ' + (c.grafico.titulo || ''));
+    const body = h('div', { class: 'jvc-b' }, cv);
+    toCanvas(c, 960).then((x) => { cv.width = x.width; cv.height = x.height; cv.getContext('2d').drawImage(x, 0, 0); }).catch(() => { body.textContent = 'No se pudo dibujar la gráfica.'; });
+    let wrap; const sw = h('select', { class: 'jvc-sel', 'aria-label': 'Tipo de gráfica', onchange: () => { c.grafico.tipo = sw.value; wrap.replaceWith(node(c)); } }, [['barras', 'Barras'], ['barras_h', 'Barras horiz.'], ['lineas', 'Líneas'], ['circular', 'Circular'], ['apiladas', 'Apiladas']].map(([v, l]) => h('option', { value: v, text: l })));
+    sw.value = c.grafico.tipo;
+    const b = (t, f) => h('button', { class: 'jvr-btn', type: 'button', onclick: f, text: t });
+    wrap = h('div', { class: 'jvr jvc' }, h('div', { class: 'jvr-h' }, h('span', { class: 'jvr-i', 'aria-hidden': 'true', text: '📊' }), h('div', { class: 'jvr-t' }, h('b', { text: c.grafico.titulo || 'Gráfica' }), h('span', { text: 'Gráfica' + (c.fuente ? ' · ' + c.fuente : '') }))), body, h('div', { class: 'jvr-a' }, [sw, b('Copiar imagen', () => copyImg(c)), b('Descargar PNG', () => dl(c))]));
+    return wrap;
+  }
+  /* superposición para chats que no pintan tarjetas (agentes) */
+  function overlay(c) {
+    const bd = h('div', { class: 'jvc-ov', role: 'dialog', 'aria-label': 'Gráfica' }), box = h('div', { class: 'jvc-box' });
+    const close = () => bd.remove(); box.append(node(c), h('button', { class: 'jvr-btn jvc-x', type: 'button', onclick: close, text: 'Cerrar' })); bd.append(box); bd.addEventListener('click', (e) => { if (e.target === bd) close(); }); document.body.append(bd);
+  }
+  const css = document.createElement('style'); css.textContent = '.jvc{border:1px solid rgba(128,128,150,.35);border-radius:18px;background:var(--surface,#fff);color:var(--fg,#111);overflow:hidden;font-size:14px;margin:10px 0 2px}.jvc .jvr-h{display:flex;gap:10px;align-items:center;padding:12px 14px 4px}.jvc .jvr-i{font-size:20px}.jvc .jvr-t{display:flex;flex-direction:column;min-width:0}.jvc .jvr-t span{font-size:12px;opacity:.65}.jvc .jvr-a{display:flex;flex-wrap:wrap;gap:8px;padding:6px 12px 12px}.jvc .jvr-btn{border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer}.jvc-cv{width:100%;height:auto;display:block;border-radius:10px;background:#fff}.jvc-b{padding:8px 10px}.jvc-sel{background:var(--surface,#222);color:inherit;border:1px solid var(--line,#444);border-radius:10px;padding:6px 8px;font:inherit}.jvc-ov{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.jvc-box{max-width:760px;width:100%;max-height:92vh;overflow:auto;background:var(--surface,#1c1c1e);border-radius:20px;padding:10px}.jvc-x{margin:8px auto 4px;display:block;border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer}'; document.head.append(css);
+  const tool = () => ({ name: 'crear_grafica', description: 'Crea una gráfica (barras, barras_h, lineas, circular, apiladas) con datos reales y se la ENSEÑA al estudiante al instante en el chat, con botones para copiarla como imagen y descargarla. Úsala cuando pida un gráfico, diagrama de barras, tarta, evolución, comparativa o visualizar datos (de sus apuntes, un ejercicio o los que él te dé). Pon un título claro, la unidad si la hay y usa SOLO datos reales o dados por el estudiante; no inventes cifras. Máximo 12 etiquetas y 5 series. circular admite una sola serie.',
+    inputSchema: { type: 'object', properties: { titulo: { type: 'string' }, tipo: { type: 'string', enum: TIPOS }, unidad: { type: 'string', description: 'p. ej. €, %, M€' }, etiquetas: { type: 'array', items: { type: 'string' } }, series: { type: 'array', items: { type: 'object', properties: { nombre: { type: 'string' }, valores: { type: 'array', items: { type: 'number' } } }, required: ['nombre', 'valores'] } }, fuente: { type: 'string', description: 'origen de los datos si se conoce' }, tema: { type: 'string', enum: ['ejecutivo', 'editorial', 'oceano'] } }, required: ['titulo', 'etiquetas', 'series'] },
+    execute: async (a) => { a = a || {}; const g = clean(a); const c = { k: 'chart', title: g.titulo || 'Gráfica', grafico: g, fuente: String(a.fuente || '').slice(0, 120), tema: ['ejecutivo', 'editorial', 'oceano'].includes(a.tema) ? a.tema : 'ejecutivo', at: Date.now() };
+      await toCanvas(c, 400); mine.push(c); setTimeout(() => { const i = mine.indexOf(c); if (i >= 0) { mine.splice(i, 1); try { overlay(c); } catch (e) {} } }, 1800);
+      return 'Gráfica «' + g.titulo + '» creada y mostrada al estudiante (' + g.tipo + ', ' + g.etiquetas.length + ' valores) con botones para copiar y descargar. No describas cada barra: comenta en 1–2 frases lo más relevante.'; } });
+  try { const t0 = window.jvCardsTake; window.jvCardsTake = function (bot) { try { t0 && t0(bot); } catch (e) {} if (mine.length && bot) bot.cards = (bot.cards || []).concat(mine.splice(0)).slice(0, 6); }; } catch (e) {}
+  try { const r0 = window.jvCardsReset; window.jvCardsReset = function () { try { r0 && r0(); } catch (e) {} }; } catch (e) {}
+  try { const n0 = window.jvCardsNode; window.jvCardsNode = function (cards) { const arr = cards || [], base = arr.filter((c) => c && c.k !== 'chart'); if (base.length === arr.length) return n0(cards); const out = arr.map((c) => (c && c.k === 'chart' ? node(c) : (n0([c]) || { firstChild: null }).firstChild)).filter(Boolean); return out.length ? h('div', { class: 'jvr-wrap' }, out) : null; }; } catch (e) {}
+  try { const b0 = window.jvxBase; window.jvxBase = function () { let all = []; try { all = b0(); } catch (e) { all = []; } return all.filter((x) => x && x.name !== 'crear_grafica').concat([tool()]); }; } catch (e) {}
+  try { const c = AG_TOOLCAT.find((x) => x.key === 'estudio') || AG_TOOLCAT[0]; if (c) NAMES.forEach((n) => { if (!c.names.includes(n)) c.names.push(n); }); } catch (e) {}
+  try { if (Array.isArray(JV_CORE_NAMES)) NAMES.forEach((n) => { if (!JV_CORE_NAMES.includes(n)) JV_CORE_NAMES.push(n); }); } catch (e) {}
+  try { const p0 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p0(tl, text, att, BASE); try { if (/grafic|grafico|diagrama|barras|tarta|circular|lineas|evolucion|visualiz/.test(String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()) && Array.isArray(r) && !r.some((x) => x && x.name === 'crear_grafica')) { const t = (tl || []).find((x) => x && x.name === 'crear_grafica'); if (t) r = r.concat([t]); } } catch (e) {} return r; }; } catch (e) {}
+  try { const j0 = window.jvxHint; if (typeof j0 === 'function') window.jvxHint = function () { return String(j0.apply(this, arguments) || '') + '\nSi el estudiante pide una gráfica o conviene visualizar datos, usa crear_grafica (se ve al instante y se puede copiar).'; }; } catch (e) {}
+})();
+
+</script>
+<script id="fa-jvhist">
+/* Historial de conversaciones (agentes y Núcleo/Jarvis): ver anteriores, renombrar, borrar y retomar */
+(function () {
+  'use strict';
+  if (window.faHist) return;
+  const css = document.createElement('style'); css.id = 'fa-hist-css';
+  css.textContent = `
+.fh-ov{position:fixed;inset:0;z-index:2147481500;background:rgba(10,15,35,.5);display:flex;align-items:flex-end;justify-content:center;animation:fhIn .22s ease both}
+.fh-sh{width:min(560px,100%);max-height:88vh;background:var(--bg);color:var(--fg);border-radius:20px 20px 0 0;display:flex;flex-direction:column;box-shadow:0 -12px 50px rgba(0,0,0,.35)}
+@media(min-width:700px){.fh-ov{align-items:center}.fh-sh{border-radius:20px;max-height:80vh}}
+.fh-hd{display:flex;align-items:center;gap:8px;padding:14px 14px 8px}.fh-hd b{flex:1;font-size:17px}
+.fh-q{margin:0 14px 8px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);color:var(--fg);font:15px system-ui}
+.fh-ls{overflow:auto;padding:4px 10px 14px;display:flex;flex-direction:column;gap:6px}
+.fh-it{box-sizing:border-box;width:100%;overflow:hidden;display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--surface);cursor:pointer;text-align:left;color:inherit;font:inherit}
+.fh-it:hover{border-color:var(--accent)}.fh-it.cur{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.fh-it .t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.fh-it .t b{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.fh-it .t small{opacity:.7;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fh-it .a{display:flex;gap:4px;flex:none}.fh-it .a button{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:9px;min-width:34px;min-height:34px;cursor:pointer;font-size:14px}
+.fh-it .a button.d{color:#d9453d}.fh-it input{flex:1;min-width:0;border:1px solid var(--accent);border-radius:8px;padding:7px 9px;background:var(--bg);color:var(--fg);font:600 14.5px system-ui}
+.fh-tag{font:700 10.5px system-ui;background:var(--accent);color:var(--accent-fg,#fff);border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+.fh-empty{text-align:center;opacity:.7;padding:26px 12px;font-size:14px}.fh-cur{display:flex;align-items:center;gap:6px;margin:0 0 6px}.fh-cur button{border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:99px;padding:5px 11px;font:600 12.5px system-ui;cursor:pointer;min-height:32px}.fh-cur .ti{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:700 14px system-ui}
+@keyframes fhIn{from{opacity:0}to{opacity:1}}`;
+  document.head.appendChild(css);
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const META = {}; const dbh = () => { try { return db; } catch (e) { return null; } };
+  const cfg = (k, id) => k === 'ac' ? {
+    base: 'agents/' + id + '/chat', pre: 'h_', msgs: () => (state.ac.id === id ? state.ac.msgs : []).filter((m) => m && m.content), role: (m) => m.role, text: (m) => m.content,
+    ser: (ms) => ms.map((m) => ({ role: m.role, content: String(m.content).slice(0, 12000) })), set: (ms) => { if (state.ac.id !== id) return; state.ac.msgs = ms.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content); acSave(); try { acPaint(); } catch (e) {} }, extra: () => ({ subj: state.ac.subj || '' }), first: (ms) => (ms.find((m) => m.role === 'user') || {}).content
+  } : {
+    base: 'nucleo/' + id + '/hist', pre: '', msgs: () => ((state.nc.msgs[id]) || []).filter((m) => m && m.t), role: (m) => (m.r === 'u' ? 'user' : 'assistant'), text: (m) => m.t,
+    ser: (ms) => ms.slice(-40).map((m) => ({ r: m.r, t: String(m.t).slice(0, 12000), ...(m.v ? { v: String(m.v).slice(0, 600) } : {}), ...(m.ag ? { ag: m.ag } : {}), ...(m.n ? { n: m.n } : {}) })), set: (ms) => { state.nc.msgs[id] = ms.filter((x) => x && typeof x === 'object').map((x) => ({ ...x, t: x.t == null ? '' : String(x.t) })); try { state.jvx.photos = []; state.jvx.files = {}; } catch (e) {} ncSave(id); try { renderNucleo(true); } catch (e) {} }, extra: () => ({}), first: (ms) => (ms.find((m) => m.r === 'u') || {}).t
+  };
+  const auto = (t) => { t = String(t || '').replace(/\s+/g, ' ').trim(); return t ? (t.length > 52 ? t.slice(0, 50).trimEnd() + '…' : t) : 'Conversación sin título'; };
+  const mkey = (k, id) => k + ':' + id;
+  async function getMeta(k, id) { const key = mkey(k, id); if (META[key]) return META[key]; let m = {}; try { const s = await dbh().doc(cfg(k, id).base + '/_cur').get(); if (s && s.exists) m = s.data() || {}; } catch (e) {} META[key] = m; return m; }
+  async function setMeta(k, id, m) { META[mkey(k, id)] = m; try { if (!Object.keys(m).length) await dbh().doc(cfg(k, id).base + '/_cur').delete(); else await dbh().doc(cfg(k, id).base + '/_cur').set(m); } catch (e) {} }
+  async function aiTitle(msgs, cfgx) {
+    try { if (typeof sample === 'undefined' || !sample) return ''; const tx = msgs.slice(0, 6).map((m) => (cfgx.role(m) === 'user' ? 'Estudiante: ' : 'Asistente: ') + String(cfgx.text(m)).slice(0, 300)).join('\n'); const r = await sample('Escribe un título muy corto (3 a 6 palabras, en español, sin comillas ni punto final) para esta conversación:\n' + tx, { modelTier: 'quick', cache: false }); const t = String((r && r.text) || '').replace(/["«»\n]/g, '').trim(); return t && t.length < 70 ? t : ''; } catch (e) { return ''; }
+  }
+  /* guarda la conversación actual en el historial (llámalo ANTES de vaciarla) */
+  async function archive(k, id) {
+    const c = cfg(k, id), snap = c.msgs().slice(), ex = c.extra(); const db0 = dbh(); if (!db0 || !snap.length) { await setMeta(k, id, {}); return null; }
+    const meta = await getMeta(k, id), cid = meta.cid || uid(), title = meta.title || auto(c.first(snap)), doc = { title, custom: !!meta.custom, ai: !!meta.ai, msgs: c.ser(snap), createdAt: meta.createdAt || Date.now(), updatedAt: Date.now(), n: snap.length, ...ex };
+    try { await db0.doc(c.base + '/' + c.pre + cid).set(doc); } catch (e) { return null; }
+    await setMeta(k, id, {});
+    if (!doc.custom && !doc.ai && snap.length >= 2) aiTitle(snap, c).then(async (t) => { if (t) { try { await dbh().doc(c.base + '/' + c.pre + cid).update({ title: t, ai: true }); } catch (e) {} } });
+    return cid;
+  }
+  async function listAll(k, id) {
+    const c = cfg(k, id), out = []; try { const qs = await dbh().collection(c.base).get(); qs.docs.forEach((d) => { const v = d.data(); if (!v || !Array.isArray(v.msgs) || d.id === 'current' || d.id === '_cur') return; if (k === 'ac' && !d.id.startsWith('h_')) return; out.push({ docId: d.id, cid: d.id.slice(c.pre.length), ...v }); }); } catch (e) {}
+    return out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  }
+  const when = (t) => { try { const d = new Date(t), n = new Date(); const same = d.toDateString() === n.toDateString(); return same ? 'Hoy ' + d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: d.getFullYear() === n.getFullYear() ? undefined : 'numeric' }); } catch (e) { return ''; } };
+  async function openConv(k, id, it, close) {
+    const c = cfg(k, id); await archive(k, id); const ms = k === 'ac' ? it.msgs.filter((m) => m && m.content) : it.msgs;
+    try { await dbh().doc(c.base + '/' + it.docId).delete(); } catch (e) {}
+    await setMeta(k, id, { cid: it.cid, title: it.title || '', custom: !!it.custom, ai: !!it.ai, createdAt: it.createdAt || Date.now() });
+    if (k === 'ac' && it.subj && state.subjects[it.subj]) state.ac.subj = it.subj; c.set(ms); close(); window.faNotify && window.faNotify({ kind: 'ok', title: 'Conversación recuperada', msg: it.title || auto(c.first(ms)), ms: 3500 });
+    try { if (k === 'ac') { const s = document.getElementById('acSubj'); if (s) s.value = state.ac.subj || ''; refreshTitle(); } } catch (e) {}
+  }
+  function open(k, id) {
+    const c = cfg(k, id); if (!dbh()) { window.toast('El historial no está disponible en esta vista.'); return; }
+    const old = document.getElementById('fhOv'); if (old) old.remove(); const ov = h('div', { class: 'fh-ov', id: 'fhOv', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Conversaciones' }); document.body.append(ov);
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey, true); }; const onKey = (e) => { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', onKey, true); ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+    let items = [], q = '', loading = true, editing = '', confirming = '';
+    const ls = h('div', { class: 'fh-ls' }), search = h('input', { class: 'fh-q', type: 'search', placeholder: 'Buscar en tus conversaciones', 'aria-label': 'Buscar conversaciones', oninput: (e) => { q = e.target.value.toLowerCase(); paint(); } });
+    const norm = (s) => String(s || '').toLowerCase();
+    async function paint() {
+      const cur = c.msgs(), meta = await getMeta(k, id), rows = [];
+      const matches = (title, ms) => !q || norm(title).includes(q) || ms.some((m) => norm(c.text(m)).includes(q));
+      const inp = (val, on) => { const i = h('input', { type: 'text', value: val, maxlength: 80, 'aria-label': 'Nuevo nombre' }); const done = () => on(i.value.trim()); i.addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') { editing = ''; paint(); } }); i.addEventListener('blur', done); setTimeout(() => { i.focus(); i.select(); }, 20); return i; };
+      if (cur.length) { const t = meta.title || auto(c.first(cur)); if (matches(t, cur)) rows.push(h('div', { class: 'fh-it cur' }, editing === '__cur' ? inp(t, async (v) => { editing = ''; if (v) await setMeta(k, id, { ...meta, cid: meta.cid || uid(), title: v, custom: true, createdAt: meta.createdAt || Date.now() }); refreshTitle(); paint(); }) : h('div', { class: 't', onclick: close }, h('b', {}, t, h('span', { class: 'fh-tag', text: 'Actual' })), h('small', { text: cur.length + ' mensajes · en curso' })), h('div', { class: 'a' }, h('button', { type: 'button', 'aria-label': 'Renombrar', title: 'Renombrar', onclick: () => { editing = '__cur'; paint(); } }, '✏️')))); }
+      items.filter((it) => matches(it.title, it.msgs)).forEach((it) => {
+        const last = it.msgs[it.msgs.length - 1]; const prev = last ? String(c.text(last)).replace(/\s+/g, ' ').slice(0, 90) : '';
+        rows.push(h('div', { class: 'fh-it', role: 'button', tabindex: 0, onclick: (e) => { if (e.target.closest('.a') || e.target.tagName === 'INPUT') return; openConv(k, id, it, close); }, onkeydown: (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) openConv(k, id, it, close); } },
+          editing === it.docId ? inp(it.title, async (v) => { editing = ''; if (v && v !== it.title) { it.title = v; it.custom = true; try { await dbh().doc(c.base + '/' + it.docId).update({ title: v, custom: true }); } catch (e) {} } paint(); }) : h('div', { class: 't' }, h('b', { text: it.title || auto(c.first(it.msgs)) }), h('small', { text: when(it.updatedAt) + ' · ' + (it.n || it.msgs.length) + ' mensajes' + (prev ? ' · ' + prev : '') })),
+          h('div', { class: 'a' }, h('button', { type: 'button', 'aria-label': 'Renombrar', title: 'Renombrar', onclick: () => { editing = it.docId; paint(); } }, '✏️'),
+            confirming === it.docId ? h('button', { type: 'button', class: 'd', onclick: async () => { confirming = ''; items = items.filter((z) => z !== it); try { await dbh().doc(c.base + '/' + it.docId).delete(); } catch (e) {} paint(); window.faNotify && window.faNotify({ kind: 'info', msg: 'Conversación borrada' }); } }, '¿Borrar?') : h('button', { type: 'button', class: 'd', 'aria-label': 'Borrar', title: 'Borrar', onclick: () => { confirming = it.docId; paint(); setTimeout(() => { if (confirming === it.docId) { confirming = ''; paint(); } }, 4000); } }, '🗑'))));
+      });
+      ls.replaceChildren(...(rows.length ? rows : [h('div', { class: 'fh-empty', text: loading ? 'Cargando…' : (q ? 'No hay conversaciones con eso.' : 'Aún no tienes conversaciones guardadas. Al empezar una nueva, la actual se guarda aquí.') })]));
+    }
+    ov.append(h('div', { class: 'fh-sh' }, h('div', { class: 'fh-hd' }, h('b', { text: 'Conversaciones' }), h('button', { class: 'btn sm primary', type: 'button', onclick: async () => { close(); await newConv(k, id); } }, '＋ Nueva'), h('button', { class: 'btn sm', type: 'button', 'aria-label': 'Cerrar', onclick: close }, '✕')), search, ls));
+    paint(); listAll(k, id).then(async (l) => { items = l; loading = false; paint(); const meta = await getMeta(k, id), cur = c.msgs(); if (cur.length >= 2 && !meta.title) { const t = await aiTitle(cur, c); if (t) { await setMeta(k, id, { ...meta, cid: meta.cid || uid(), title: t, ai: true, createdAt: meta.createdAt || Date.now() }); refreshTitle(); paint(); } } });
+  }
+  async function newConv(k, id) { const c = cfg(k, id); if (k === 'ac' && typeof acCtl !== 'undefined' && acCtl) { try { acCtl.abort(); } catch (e) {} } await archive(k, id); if (k === 'ac') { state.ac.busy = false; } c.set([]); try { refreshTitle(); } catch (e) {} }
+  /* barra de título de la conversación (agentes) */
+  async function refreshTitle() { const b = document.getElementById('fhTitle'); if (!b || state.ac.id == null) return; const id = state.ac.id, c = cfg('ac', id), m = await getMeta('ac', id), msgs = c.msgs(); b.textContent = msgs.length ? (m.title || auto(c.first(msgs))) : 'Conversación nueva'; }
+  const s0 = window.acSection;
+  if (typeof s0 === 'function') window.acSection = function (id, a) {
+    const sec = s0.apply(this, arguments);
+    try {
+      const bar = h('div', { class: 'fh-cur' }, h('span', { class: 'ti', id: 'fhTitle', text: 'Conversación' }), h('button', { type: 'button', 'aria-label': 'Ver conversaciones anteriores', onclick: () => open('ac', id) }, '🕘 Historial'), h('button', { type: 'button', 'aria-label': 'Nueva conversación', onclick: () => newConv('ac', id) }, '＋ Nueva'));
+      const log = sec.querySelector('#acLog'); if (log && log.parentNode) log.parentNode.insertBefore(bar, log); setTimeout(refreshTitle, 400); setTimeout(refreshTitle, 1500);
+    } catch (e) {}
+    return sec;
+  };
+  window.faHist = { open, archive, newConv, archiveAc: () => { if (state.ac && state.ac.id) archive('ac', state.ac.id); } };
 })();
 
 </script>
