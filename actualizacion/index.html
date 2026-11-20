@@ -13020,7 +13020,16 @@ async function ncAsk(text) {
     const stop = (e) => e && (e.name === 'AbortError' || e.code === 'rate_limited' || e.code === 'not_granted');
     try { r = await go(tools); } catch (e) { if (stop(e) || !tools.length) throw e; try { console.warn('Núcleo: falló con ' + tools.length + ' herramientas', e && e.code, e && e.message); } catch (e0) {} bot.t = '';
       try { let core = []; try { core = (sid === JV_ID ? (jvCoreTools().length ? jvCoreTools() : jvxTools()) : (tools.filter((x) => NC_CORE.includes(x.name)).length ? tools.filter((x) => NC_CORE.includes(x.name)) : tools.slice(0, 12))).map((x) => ({ ...x, execute: async (i) => { const q = await x.execute(i || {}); return q == null ? 'Hecho.' : typeof q === 'string' ? q : JSON.stringify(q).slice(0, 6000); } })); } catch (e2) { core = tools.slice(0, 12); } r = await go(core); }
-      catch (e2) { if (stop(e2)) throw e2; bot.t = ''; const inp2 = [{ role: 'user', content: input[0].content + '\n\nAVISO TÉCNICO: las herramientas han fallado un momento. NO digas que no existen ni que no tienes acceso a ellas: di que ha habido un fallo temporal y que se lo pida otra vez; no afirmes haber hecho cambios.' }].concat(input.slice(1)); r = await go([], inp2); } }
+      catch (e2) { if (stop(e2)) throw e2; bot.t = ''; let e3 = null;
+        /* reintento con SOLO las pocas herramientas que hacen falta para apuntes y adjuntos (si el fallo era por llevar demasiadas) */
+        try { const MINI = ['listar_documentos', 'opciones_apuntes', 'preguntar_configuracion', 'crear_apuntes_extensos', 'anadir_apuntes', 'guardar_adjuntos', 'crear_recurso', 'crear_pdf_apuntes', 'abrir']; const mini = tools.filter((x) => MINI.includes(x.name)).map((x) => ({ ...x, execute: async (i) => { const q = await x.execute(i || {}); return q == null ? 'Hecho.' : typeof q === 'string' ? q : JSON.stringify(q).slice(0, 6000); } })); if (!mini.length) throw e2; r = await go(mini); }
+        catch (e4) { if (stop(e4)) throw e4; e3 = e4; }
+        if (e3) {
+          const det = [e, e2, e3].map((q) => ((q && (q.code || q.name)) || 'error') + (q && q.message ? ': ' + String(q.message).replace(/\s+/g, ' ').slice(0, 110) : '')).join(' · ');
+          try { console.warn('Núcleo: fallaron los tres intentos con herramientas', det); } catch (e0) {}
+          const inp2 = [{ role: 'user', content: input[0].content + '\n\nAVISO TÉCNICO: las herramientas han fallado un momento. NO digas que no existen ni que no tienes acceso a ellas: di que ha habido un fallo temporal y que se lo pida otra vez; no afirmes haber hecho cambios.' }].concat(input.slice(1)); r = await go([], inp2);
+          r = { ...r, text: '> Detalle técnico del fallo (por si hay que arreglarlo): ' + det + '\n\n' + String((r && r.text) || '') };
+        } } }
     { const sp = ncSplit(clean(r && r.text) || clean(bot.t) || 'No he podido responder.'); bot.t = sp.t || 'No he podido responder.'; bot.s = sp.s; if (sid !== JV_ID && strictOn('nc')) { try { const pp = ncStrictParts(sid); bot.t = strictApply(bot.t, pp, { warnNone: false }).t; } catch (e) {} } } ncSetState('done');
   } catch (e) { if (!(e && e.name === 'AbortError')) { bot.t = bot.t || (e && e.code === 'rate_limited' ? 'Demasiadas peticiones seguidas. Espera un momento y vuelve a preguntar.' : 'No he podido responder ahora. Inténtalo de nuevo.'); } ncSetState('wait'); }
   try { jvCardsTake(bot); } catch (e) {}
