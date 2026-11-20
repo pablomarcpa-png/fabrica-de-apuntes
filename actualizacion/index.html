@@ -13014,22 +13014,34 @@ async function ncAsk(text) {
     /* Jarvis: pocas herramientas y las adecuadas a lo que pide (con 29 a la vez la llamada falla y se queda sin las del calendario y el plan) */
     const JV_CORE = ['consultar_calendario', 'crear_evento_calendario', 'crear_eventos_calendario', 'modificar_evento_calendario', 'eliminar_evento_calendario', 'anadir_sesion_estudio', 'listar_bloques_estudio', 'modificar_bloque_estudio', 'mover_bloques_estudio', 'borrar_bloques_estudio', 'registrar_estudio_hecho', 'reorganizar_plan', 'anadir_entrega', 'anadir_examen', 'abrir', 'deshacer_cambio'];
     const jvCoreTools = () => tools.filter((x) => JV_CORE.includes(x.name));
-    if (tools.length > 14) tools = ncPickTools(tools, text, imgs.length || /archivos adjuntos/i.test(text), sid === JV_ID ? JV_CORE : NC_CORE);
+    const tieneAdj = !!(imgs.length || /archivos adjuntos/i.test(text)), todas = tools;
+    if (tools.length > 14) tools = ncPickTools(tools, text, tieneAdj, sid === JV_ID ? JV_CORE : NC_CORE);
+    /* Con adjuntos (Jarvis) se empieza solo con las herramientas de apuntes/archivos: menos herramientas = menos riesgo de que falle la llamada */
+    const ATT = ['listar_documentos', 'opciones_apuntes', 'preguntar_configuracion', 'crear_apuntes_extensos', 'anadir_apuntes', 'guardar_adjuntos', 'crear_recurso', 'crear_pdf_apuntes', 'listar_carpetas', 'crear_carpeta', 'anadir_a_carpeta', 'unificar_apuntes', 'ver_apuntes', 'crear_documento', 'anadir_sesion_estudio', 'crear_evento_calendario', 'abrir'];
+    const envolver = (x) => ({ ...x, execute: async (i) => { const q = await x.execute(i || {}); return q == null ? 'Hecho.' : typeof q === 'string' ? q : JSON.stringify(q).slice(0, 6000); } });
+    if (sid === JV_ID && tieneAdj) { const sub = todas.filter((x) => ATT.includes(x.name)); if (sub.length >= 5) tools = sub; }
     const go = (tl, inp) => sample(inp || input, { modelTier: 'default', cache: false, signal: ctl.signal, ...(tl.length ? { tools: tl } : {}), ...(imgs.length ? { images: imgs.map((x) => x.blob) } : {}), onText: (o) => { bot.t = ncSplit(clean(o && o.text)).t; ncPaintLast(); } });
     let r;
     const stop = (e) => e && (e.name === 'AbortError' || e.code === 'rate_limited' || e.code === 'not_granted');
-    try { r = await go(tools); } catch (e) { if (stop(e) || !tools.length) throw e; try { console.warn('Núcleo: falló con ' + tools.length + ' herramientas', e && e.code, e && e.message); } catch (e0) {} bot.t = '';
-      try { let core = []; try { core = (sid === JV_ID ? (jvCoreTools().length ? jvCoreTools() : jvxTools()) : (tools.filter((x) => NC_CORE.includes(x.name)).length ? tools.filter((x) => NC_CORE.includes(x.name)) : tools.slice(0, 12))).map((x) => ({ ...x, execute: async (i) => { const q = await x.execute(i || {}); return q == null ? 'Hecho.' : typeof q === 'string' ? q : JSON.stringify(q).slice(0, 6000); } })); } catch (e2) { core = tools.slice(0, 12); } r = await go(core); }
-      catch (e2) { if (stop(e2)) throw e2; bot.t = ''; let e3 = null;
-        /* reintento con SOLO las pocas herramientas que hacen falta para apuntes y adjuntos (si el fallo era por llevar demasiadas) */
-        try { const MINI = ['listar_documentos', 'opciones_apuntes', 'preguntar_configuracion', 'crear_apuntes_extensos', 'anadir_apuntes', 'guardar_adjuntos', 'crear_recurso', 'crear_pdf_apuntes', 'abrir']; const mini = tools.filter((x) => MINI.includes(x.name)).map((x) => ({ ...x, execute: async (i) => { const q = await x.execute(i || {}); return q == null ? 'Hecho.' : typeof q === 'string' ? q : JSON.stringify(q).slice(0, 6000); } })); if (!mini.length) throw e2; r = await go(mini); }
-        catch (e4) { if (stop(e4)) throw e4; e3 = e4; }
-        if (e3) {
-          const det = [e, e2, e3].map((q) => ((q && (q.code || q.name)) || 'error') + (q && q.message ? ': ' + String(q.message).replace(/\s+/g, ' ').slice(0, 110) : '')).join(' · ');
-          try { console.warn('Núcleo: fallaron los tres intentos con herramientas', det); } catch (e0) {}
-          const inp2 = [{ role: 'user', content: input[0].content + '\n\nAVISO TÉCNICO: las herramientas han fallado un momento. NO digas que no existen ni que no tienes acceso a ellas: di que ha habido un fallo temporal y que se lo pida otra vez; no afirmes haber hecho cambios.' }].concat(input.slice(1)); r = await go([], inp2);
-          r = { ...r, text: '> Detalle técnico del fallo (por si hay que arreglarlo): ' + det + '\n\n' + String((r && r.text) || '') };
-        } } }
+    /* intentos: lo elegido → un juego pequeño de apuntes → las básicas (calendario/plan) → sin herramientas */
+    const intentos = [tools];
+    if (sid === JV_ID) {
+      const mini = todas.filter((x) => ['listar_documentos', 'opciones_apuntes', 'crear_apuntes_extensos', 'guardar_adjuntos', 'anadir_apuntes', 'crear_recurso'].includes(x.name)).map(envolver); if (mini.length && mini.length < tools.length) intentos.push(mini);
+      let core = []; try { core = (jvCoreTools().length ? jvCoreTools() : jvxTools()).map(envolver); } catch (e2) { core = tools.slice(0, 12); } if (core.length) intentos.push(core);
+    } else {
+      let core = []; try { core = (tools.filter((x) => NC_CORE.includes(x.name)).length ? tools.filter((x) => NC_CORE.includes(x.name)) : tools.slice(0, 12)).map(envolver); } catch (e2) { core = tools.slice(0, 12); } if (core.length && tools.length) intentos.push(core);
+    }
+    const fallos = [];
+    for (let k = 0; k < intentos.length && !r; k++) {
+      if (!intentos[k].length && k) continue;
+      try { r = await go(intentos[k]); }
+      catch (e) { if (stop(e) || !intentos[k].length) throw e; fallos.push(e); try { console.warn('Núcleo: falló con ' + intentos[k].length + ' herramientas', e && e.code, e && e.message); } catch (e0) {} bot.t = ''; }
+    }
+    if (!r) {
+      const det = fallos.map((q) => ((q && (q.code || q.name)) || 'error') + (q && q.message ? ': ' + String(q.message).replace(/\s+/g, ' ').slice(0, 110) : '')).join(' · ');
+      const inp2 = [{ role: 'user', content: input[0].content + '\n\nAVISO TÉCNICO: las herramientas han fallado un momento. NO digas que no existen ni que no tienes acceso a ellas: di que ha habido un fallo temporal y que se lo pida otra vez; no afirmes haber hecho cambios.' }].concat(input.slice(1)); r = await go([], inp2);
+      if (det) r = { ...r, text: '> Detalle técnico del fallo (por si hay que arreglarlo): ' + det + '\n\n' + String((r && r.text) || '') };
+    }
     { const sp = ncSplit(clean(r && r.text) || clean(bot.t) || 'No he podido responder.'); bot.t = sp.t || 'No he podido responder.'; bot.s = sp.s; if (sid !== JV_ID && strictOn('nc')) { try { const pp = ncStrictParts(sid); bot.t = strictApply(bot.t, pp, { warnNone: false }).t; } catch (e) {} } } ncSetState('done');
   } catch (e) { if (!(e && e.name === 'AbortError')) { bot.t = bot.t || (e && e.code === 'rate_limited' ? 'Demasiadas peticiones seguidas. Espera un momento y vuelve a preguntar.' : 'No he podido responder ahora. Inténtalo de nuevo.'); } ncSetState('wait'); }
   try { jvCardsTake(bot); } catch (e) {}
