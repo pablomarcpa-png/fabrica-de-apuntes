@@ -3092,7 +3092,7 @@ async function saveBytes(name, u8) {
 }
 async function fire(id) {
   try { if ((typeof mcp === 'undefined' || !mcp) && window.claude) { const m = await window.claude.use('mcp'); if (m) mcp = m; } } catch (e) {}
-  if (typeof mcp === 'undefined' || !mcp) { toast('Petición guardada: se atenderá en cuanto el conector esté disponible. Pulsa «Reintentar» más tarde.'); return false; }
+  if (typeof mcp === 'undefined' || !mcp || window.__faLocalCal) { toast('Petición guardada: se atenderá en cuanto el conector esté disponible. Pulsa «Reintentar» más tarde.'); return false; }
   try { await mcp.callTool('Claude Code Remote', 'fire_trigger', { trigger_id: DK_TRIG, text: 'Procesa ahora la presentación decks/' + id + '.' }); toast('Claude se ha puesto con ello. Tarda unos minutos.'); return true; }
   catch (e) { toast('No pude avisar a Claude ahora. Pulsa «Reintentar».'); return false; }
 }
@@ -5516,7 +5516,7 @@ function renderCalView(box0) {
     h('div', { class: 'cal-panel' }, h('div', { class: 'cal-hd' }, h('button', { class: 'cal-rb', type: 'button', 'aria-label': 'Anterior', onclick: () => calShift(-1) }, '‹'), calTitleEl(mode, state.calDate), h('button', { class: 'cal-rb', type: 'button', 'aria-label': 'Siguiente', onclick: () => calShift(1) }, '›')),
     h('div', { class: 'cal-sub' }, h('button', { class: 'btn sm', type: 'button', onclick: () => { state.calDate = todayISO(); state.calSel = state.calDate; renderCalView(); } }, 'Hoy'), (mcp && !window.__faLocalCal) ? h('button', { class: 'btn sm', type: 'button', onclick: () => gcSyncNow() }, 'Sincronizar') : null, h('button', { class: 'btn sm', type: 'button', 'aria-pressed': mode === 'anio' ? 'true' : 'false', onclick: () => { state.calMode = mode === 'anio' ? 'mes' : 'anio'; renderCalView(); } }, mode === 'anio' ? 'Mes' : 'Año')),
     calAddBtn(state.calSel)));
-  const status = !mcp ? 'Aquí ves tus clases (las añades en Ajustes → Mi rutina), tu plan de estudio y las fechas de exámenes y entregas.'
+  const status = (!mcp || window.__faLocalCal) ? 'Aquí ves tus clases (las añades en Ajustes → Mi rutina), tu plan de estudio y las fechas de exámenes y entregas.'
     : state.calFail[key] ? calReadMsg(state.calErr && state.calErr.code) : mcp && !evs ? 'Cargando tu calendario…' : '';
   if (status) box.append(h('p', { class: 'note', text: status }), state.calFail[key] ? h('button', { class: 'btn', type: 'button', onclick: () => { delete state.calFail[key]; renderCalView(); } }, 'Reintentar') : null);
   if (mode === 'dia') box.append(timeline([state.calDate], idx));
@@ -7139,7 +7139,7 @@ function renderNotion() {
   box.replaceChildren();
   box.hidden = !nt.open;
   if (!nt.open) return;
-  if (!mcp) { box.append(h('p', { class: 'note', text: 'Importar desde Notion requiere abrir esta página desde Claude con Notion conectado.' })); return; }
+  if (!mcp || window.__faLocalCal) { box.append(h('p', { class: 'note', text: 'Importar desde Notion requiere abrir esta página desde Claude con Notion conectado.' })); return; }
   const src = ntSrc(), list = ntSources();
   const head = h('div', { class: 'nt-head' }, h('strong', { text: 'Importar desde Notion' }), h('button', { class: 'x', type: 'button', 'aria-label': 'Cerrar', onclick: () => { nt.open = false; renderNotion(); } }, '×'));
   const chips = h('div', { class: 'seg', role: 'group', 'aria-label': 'Origen' },
@@ -12033,7 +12033,7 @@ Escribe en español. Evita emojis y símbolos poco habituales (el documento se e
 function genStatusTxt(j) { return j.status === 'pending' ? 'En cola' : j.status === 'working' ? 'Claude lo está redactando' : j.status === 'error' ? 'Error' : 'Listo'; }
 const GEN_TRIG = 'trig_014thU2YuPMJ3iCyjHtySjKd';
 async function genFire(jid) {
-  if (!mcp) { toast('Encargo en cola: se redactará en la próxima revisión.'); return false; }
+  if (!mcp || window.__faLocalCal) { toast('Encargo en cola: se redactará en la próxima revisión.'); return false; }
   try { await mcp.callTool('Claude Code Remote', 'fire_trigger', { trigger_id: GEN_TRIG, text: 'Procesa ahora el encargo genjobs/' + jid + '.' }); toast('Claude ya está redactándolo. Aparecerá aquí en unos minutos.'); return true; }
   catch (e) { toast('No pude lanzarlo ahora; se redactará en la próxima revisión (cada hora).'); return false; }
 }
@@ -12309,7 +12309,7 @@ function aiPanel() {
     h('p', { class: 'small', text: 'Comprueba si la IA integrada funciona en esta vista. Si no, la app te ofrece hacerlo en un chat de Claude.' }),
     row('Permiso de IA (generar dentro de la app)', sample ? 'Disponible' : 'No disponible', !!sample),
     row('Datos guardados en la nube', db ? 'Conectado' : 'No conectado', !!db),
-    row('Conectores (calendario, Notion)', mcp ? 'Disponibles' : 'No disponibles', !!mcp),
+    row('Conectores (calendario, Notion)', (mcp && !window.__faLocalCal) ? 'Disponibles' : 'Calendario propio de la app', !!mcp),
     T ? (T.busy ? h('p', { class: 'small', text: 'Probando…' }) : row('Última prueba', T.ok ? 'Correcta (' + T.ms + ' ms)' : 'Falló: ' + (ERR[T.code] || T.code) + (T.msg ? ' · ' + T.msg : ''), !!T.ok)) : null,
     L ? row('Último error al generar', (L.label || '') + ': ' + (ERR[L.code] || L.code) + ' · ' + fmtDateTime(L.at), false) : null,
     h('div', { class: 'toolbar' }, h('button', { class: 'btn primary', type: 'button', disabled: !!(T && T.busy), onclick: aiProbe }, 'Probar la IA ahora')));
@@ -13458,7 +13458,7 @@ const RS_AG = 'investigador';
 state.res = {}; state.rs = { ta: null, sel: null, draft: '', subj: '' };
 function rsList() { return Object.entries(state.res).map(([id, r]) => ({ id, ...r })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)); }
 async function rsFire(id) {
-  if (!mcp) { toast('Consulta en cola: se atenderá en la próxima revisión (cada hora).'); return false; }
+  if (!mcp || window.__faLocalCal) { toast('Consulta en cola: se atenderá en la próxima revisión (cada hora).'); return false; }
   try { await mcp.callTool('Claude Code Remote', 'fire_trigger', { trigger_id: GEN_TRIG, text: 'Atiende ahora la consulta del Investigador research/' + id + '.' }); toast('El Investigador está buscando. Responderá aquí en unos minutos.'); return true; }
   catch (e) { toast('No pude lanzarlo ahora; se atenderá en la próxima revisión (cada hora).'); return false; }
 }
@@ -13974,7 +13974,7 @@ function closeNtSend() { const m = $('#ntSendModal'); if (m) m.remove(); }
 function ntBtn(it) { return h('button', { class: 'btn sm', type: 'button', onclick: () => openNtSend(it.subjectId, it.id) }, it.ntAt ? 'En Notion ✓' : 'Enviar a Notion'); }
 function openNtSend(sid, pre) {
   const s = state.subjects[sid]; if (!s) return;
-  if (!mcp) { toast('Notion no está conectado en esta vista. Ábrela desde Claude con Notion conectado.'); return; }
+  if (!mcp || window.__faLocalCal) { toast('Notion no está conectado en esta vista. Ábrela desde Claude con Notion conectado.'); return; }
   closeNtSend();
   const notes = String(s.notes || '').trim(), rows = (notes.length >= 20 ? [{ id: 'notes', subjectId: sid, kind: 'apuntes', title: 'Apuntes del profesor · ' + s.name, text: notes }] : []).concat(libOf(sid));
   const sel = new Set(pre ? [pre] : rows.filter((r) => r.id !== 'notes' && !r.ntAt).map((r) => r.id)), o = { temas: new Set(), tipos: new Set(['APUNTES']), bloque: '' };
@@ -17918,7 +17918,7 @@ function ncInboxTool() {
   return { name: 'guardar_en_inbox_notion', description: 'Guarda notas rápidas como nuevas entradas (tareas activas) en el INBOX de Notion del estudiante. Úsala SOLO cuando el estudiante haya dicho que son notas rápidas o pida guardarlas en el inbox. Una entrada por nota o tarea distinta.',
     inputSchema: { type: 'object', properties: { notas: { type: 'array', items: { type: 'object', properties: { titulo: { type: 'string', description: 'título corto, máximo 100 caracteres' }, detalle: { type: 'string', description: 'texto completo transcrito de esa nota' }, fecha: { type: 'string', description: 'AAAA-MM-DD solo si la nota menciona una fecha; si no, se usa hoy' } }, required: ['titulo'] } } }, required: ['notas'] },
     execute: async (a) => {
-      if (!mcp) throw new Error('Notion no está conectado en esta vista');
+      if (!mcp || window.__faLocalCal) throw new Error('Notion no está conectado en esta vista');
       const L = (Array.isArray(a && a.notas) ? a.notas : []).filter((n) => n && String(n.titulo || '').trim()).slice(0, 15); if (!L.length) throw new Error('no hay notas que guardar');
       const pages = L.map((n) => { const det = String(n.detalle || '').trim().slice(0, 6000); return { properties: { 'TAREA ': String(n.titulo).trim().slice(0, 100), COMPLETADO: '__NO__', 'ESTADO ': 'ACTIVO', 'date:Fecha:start': /^\d{4}-\d{2}-\d{2}$/.test(n.fecha || '') ? n.fecha : todayISO(), 'date:Fecha:is_datetime': 0 }, ...(det ? { content: det } : {}) }; });
       await mcp.callTool(NOTION, 'notion-create-pages', { parent: { type: 'data_source_id', data_source_id: NT_INBOX }, pages });
@@ -19364,7 +19364,7 @@ function ntlQueue(key, data) {
   NL.q.push({ key, data: data || null, retry: !!NL.failed[key] });
 }
 async function ntlRun() {
-  if (NL.run || NL.paused || !mcp) return;
+  if (NL.run || NL.paused || !mcp || window.__faLocalCal) return;
   NL.run = true; ntlPaint();
   try {
     while (NL.q.length && !NL.paused) {
@@ -19442,7 +19442,7 @@ async function ntlBoot() {
 }
 { let tries = 0; const iv = setInterval(() => { tries++; try { if (typeof ready !== 'undefined' && ready) { clearInterval(iv); if (db && mcp) ntlBoot(); } } catch (e) {} if (tries > 150) clearInterval(iv); }, 800); }
 window.ntlChip = function () {
-  if (!mcp) return 'Abre desde Claude';
+  if (!mcp || window.__faLocalCal) return 'Abre desde Claude';
   if (!NL.cfg) return 'Biblioteca';
   if (!NL.cfg.on) return 'Sincronización apagada';
   if (NL.paused) return 'Necesita permiso';
@@ -19658,7 +19658,7 @@ function ntlPaint() {
   if (!syBox || !ov || !document.body.contains(ov)) return;
   if (H.tab !== 'sync') return;
   const cfg = NL.cfg, kids = [];
-  if (!mcp) { syBox.replaceChildren(h('p', { class: 'note', text: 'La sincronización con Notion necesita abrir esta página desde Claude con Notion conectado.' })); return; }
+  if (!mcp || window.__faLocalCal) { syBox.replaceChildren(h('p', { class: 'note', text: 'La sincronización con Notion necesita abrir esta página desde Claude con Notion conectado.' })); return; }
   if (!cfg) { syBox.replaceChildren(h('p', { class: 'small' }, h('span', { class: 'thinking', text: 'Cargando…' }))); return; }
   const s = ntlStats(), pending = s.fresh + s.old;
   kids.push(h('div', { class: 'nh-row' },
@@ -20084,7 +20084,7 @@ window.ntHubOpen = function (tab) {
     h('div', { class: 'gd-bar' }, h('button', { class: 'btn sm', type: 'button', onclick: hClose }, ic('back'), ' Cerrar'), h('div', { class: 'gd-bt' }, h('b', { text: 'Notion' }), h('span', { class: 'small', text: 'Busca, descarga y crea páginas · copia automática de tu biblioteca' }))),
     bodyEl);
   document.body.append(ov); document.body.classList.add('gd-open'); document.addEventListener('keydown', hEsc);
-  if (!mcp) bodyEl.prepend(h('p', { class: 'note', text: 'Esta sección necesita abrir la página desde Claude con Notion conectado.' }));
+  if (!mcp || window.__faLocalCal) bodyEl.prepend(h('p', { class: 'note', text: 'Esta sección necesita abrir la página desde Claude con Notion conectado.' }));
   if (db && !NL.loaded) ntlLoad().then(() => ntlPaint());
   hPaintAll();
 };
@@ -23152,7 +23152,7 @@ tkClash = function (day, start, end, skipId) {
     buildIndex = function (evs) {
       const idx = bi(evs);
       try {
-        if (mcp) return idx;
+        if (mcp && !window.__faLocalCal) return idx;
         const R = routine().items; if (!R.length) return idx;
         const [a, b] = calRange(state.calMode, state.calDate);
         for (let k = a, g = 0; k <= b && g < 400; k = addDaysISO(k, 1), g++) {
@@ -23168,7 +23168,7 @@ tkClash = function (day, start, end, skipId) {
     dayItems = function (k0, withDone) {
       const items = di(k0, withDone);
       try {
-        if (mcp) return items;
+        if (mcp && !window.__faLocalCal) return items;
         const real = todayISO(), day = k0 || real, nm = new Date().getHours() * 60 + new Date().getMinutes();
         routine().items.filter((x) => x.days.includes(isoDow(day)) && (!x.from || day >= x.from) && (!x.to || day <= x.to)).forEach((x) => {
           const s = toMin(x.start), e = toMin(x.end), past = day === real && e <= nm, now = day === real && s <= nm && nm < e;
