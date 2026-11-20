@@ -12163,7 +12163,7 @@ async function genPool(run, sig, n, work) {
       catch (e) { run.act.delete(k); if (!err) err = e; if (e && e.code === 'rate_limited') run.conc = 1; return; }
     }
   };
-  const w = Math.max(1, Math.min(run.conc || 3, n - run.i));
+  const w = Math.max(1, Math.min(run.conc || 4, n - run.i));
   await Promise.all(Array.from({ length: w }, worker));
   flush();
   if (err) throw err;
@@ -12218,17 +12218,17 @@ async function genRunLoop(run) {
     if (!run.outline) {
       run.step = 'Planificando el documento…'; genRepaint();
       const total = genTotalWords(f, run.material.length), nSec = Math.max(4, Math.min(30, Math.round(total / 900)));
-      const q = 'Eres un profesor universitario experto en «' + s.name + '». Con los apuntes siguientes, planifica unos súper-súper-apuntes (' + genExtTxt(f) + ') que CONSERVEN todo el contenido del profesor. Divide el documento siguiendo exactamente la estructura del material del profesor (sus temas y apartados, en su orden) sin dejar nada fuera. ' + (f.scope.trim() ? 'Cubre únicamente: ' + f.scope.trim() + '. ' : 'Cubre TODO el material en orden. ') + (f.free.trim() ? 'Instrucciones del estudiante (prioritarias): ' + f.free.trim() + ' ' : '') + 'Divídelo en unas ' + nSec + ' secciones. Responde SOLO con un array JSON de objetos {"titulo":"título de la sección","cubre":"qué parte del material cubre, en una frase","palabras":número aproximado de palabras}.\n\nAPUNTES:\n"""\n' + run.material + '\n"""';
+      const q = 'Eres un profesor universitario experto en «' + s.name + '». Con los apuntes siguientes, planifica unos súper-súper-apuntes (' + genExtTxt(f) + ') que CONSERVEN todo el contenido del profesor. Divide el documento siguiendo exactamente la estructura del material del profesor (sus temas y apartados, en su orden) sin dejar nada fuera. ' + (f.scope.trim() ? 'Cubre únicamente: ' + f.scope.trim() + '. ' : 'Cubre TODO el material en orden. ') + (f.free.trim() ? 'Instrucciones del estudiante (prioritarias): ' + f.free.trim() + ' ' : '') + 'Divídelo en unas ' + nSec + ' secciones. ' + (window.genParPlan ? window.genParPlan(run) : 'Responde SOLO con un array JSON de objetos {"titulo":"título de la sección","cubre":"qué parte del material cubre, en una frase","palabras":número aproximado de palabras}.\n\nAPUNTES:\n"""\n' + run.material + '\n"""');
       const arr = await aiJson(q, 'default', sig);
       const out = arr.filter((x) => x && typeof x.titulo === 'string' && x.titulo.trim()).slice(0, 40).map((x) => ({ titulo: x.titulo.trim(), cubre: String(x.cubre || ''), palabras: Math.max(250, Math.min(2200, parseInt(x.palabras, 10) || Math.round(total / nSec))) }));
       if (!out.length) throw { code: 'invalid_json' };
-      const sum = out.reduce((a, x) => a + x.palabras, 0), k = total / sum; out.forEach((x) => { x.palabras = Math.max(250, Math.min(2200, Math.round(x.palabras * k))); });
+      const sum = out.reduce((a, x) => a + x.palabras, 0), k = total / sum; out.forEach((x) => { x.palabras = Math.max(250, Math.min(2200, Math.round(x.palabras * k))); }); try { if (window.genParAssign) window.genParAssign(run, arr, out); } catch (e) {}
       run.outline = out; run.i = 0; run.parts = [];
     }
     const base = genPrompt(f, s.name), plan = run.outline.map((x, i) => (i + 1) + '. ' + x.titulo + ' — ' + x.cubre).join('\n');
     await genPool(run, sig, run.outline.length, async (k) => {
       const sec = run.outline[k], n = run.outline.length, prev = run.parts.length >= k && k > 0 ? run.parts[k - 1].slice(-1500) : '';
-      const q = base + '\n\n=== APUNTES DEL PROFESOR ===\n"""\n' + run.material + '\n"""\n\nPLAN DEL DOCUMENTO (secciones):\n' + plan + '\n\nTAREA ACTUAL: redacta SOLO la sección ' + (k + 1) + ' de ' + n + ', «' + sec.titulo + '» (cubre: ' + sec.cubre + '), con unas ' + sec.palabras + ' palabras. Empieza directamente con «## ' + sec.titulo + '» y usa los bloques «#### Contenido del profesor» y «#### Agente de apuntes — …» definidos arriba. Antes de responder verifica la fidelidad: ningún concepto, cifra o definición del profesor omitido o alterado. No escribas el título general del documento ni repitas lo que cubren las otras secciones (las demás secciones se redactan a la vez: ciñete a la tuya); no cierres el documento.' + (prev ? '\n\nFinal de la sección anterior (para dar continuidad, no lo repitas):\n' + prev : '');
+      const q = base + '\n\n=== APUNTES DEL PROFESOR ===\n"""\n' + (window.genParSlice ? window.genParSlice(run, sec) : run.material) + '\n"""\n\nPLAN DEL DOCUMENTO (secciones):\n' + plan + '\n\nTAREA ACTUAL: redacta SOLO la sección ' + (k + 1) + ' de ' + n + ', «' + sec.titulo + '» (cubre: ' + sec.cubre + '), con unas ' + sec.palabras + ' palabras. Empieza directamente con «## ' + sec.titulo + '» y usa los bloques «#### Contenido del profesor» y «#### Agente de apuntes — …» definidos arriba. Antes de responder verifica la fidelidad: ningún concepto, cifra o definición del profesor omitido o alterado. No escribas el título general del documento ni repitas lo que cubren las otras secciones (las demás secciones se redactan a la vez: ciñete a la tuya); no cierres el documento.' + (prev ? '\n\nFinal de la sección anterior (para dar continuidad, no lo repitas):\n' + prev : '');
       const r = await aiTry(() => sample(q, { modelTier: 'default', signal: sig, cache: false }), { label: 'súper-apuntes', signal: sig, tries: 4 });
       let t = chUnwrap(r.text); if (String(t || '').trim().length < 40) throw { code: 'empty_completion' }; if (!/^##\s/.test(t)) t = '## ' + sec.titulo + '\n\n' + t;
       return t;
@@ -12997,7 +12997,7 @@ function renderNucleo(keep) {
   const inp = h('textarea', { id: 'ncIn', rows: '1', placeholder: sid === JV_ID ? 'Habla con Jarvis…' : 'Pregunta al Núcleo…', 'aria-label': 'Escribe tu pregunta', maxlength: '60000', onkeydown: (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); const v = inp.value; inp.value = ''; ncAsk(v); } }, oninput: () => { inp.style.height = 'auto'; inp.style.height = Math.max(44, Math.min(120, inp.scrollHeight)) + 'px'; } }); inp.value = draft || ''; setTimeout(() => { if (inp.value) { inp.style.height = 'auto'; inp.style.height = Math.max(44, Math.min(120, inp.scrollHeight)) + 'px'; } }, 0);
   const send = h('button', { class: 'nc-send', type: 'button', 'aria-label': 'Enviar', disabled: state.nc.busy, onclick: () => { const v = inp.value; inp.value = ''; ncAsk(v); } }, ic('send'));
   const top = h('div', { class: 'nc-top' }, h('button', { class: 'nc-back', type: 'button', 'aria-label': 'Cerrar', onclick: ncClose }, ic('back')), ncOrb(hue, 30, 'mini'), h('div', { class: 'nc-tt' }, h('b', { text: sc.title }), h('span', { text: state.nc.busy ? 'Pensando…' : state.nc.st === 'done' ? 'Listo' : sc.sub })),
-    window.faHist ? h('button', { class: 'nc-new', type: 'button', 'aria-label': 'Conversaciones anteriores', onclick: () => window.faHist.open('nc', sid) }, '🕘 Historial') : null,
+    window.faHist ? h('button', { class: 'nc-new', type: 'button', 'aria-label': 'Conversaciones anteriores', onclick: () => window.faHist.open('nc', sid) }, 'Historial') : null,
     msgs.length ? h('button', { class: 'nc-new', type: 'button', onclick: () => { try { window.faHist && window.faHist.archive('nc', sid); } catch (e) {} state.nc.msgs[sid] = []; state.jvx.photos = []; state.jvx.files = {}; ncSave(sid); renderNucleo(); } }, 'Nueva') : null);
   const body = h('div', { id: 'ncScroll', class: 'nc-scroll' });
   if (!msgs.length) {
@@ -25245,7 +25245,7 @@ Todas admiten "fuente" (de dónde salen los datos) y "notas" (guion del orador, 
     let wrap; const sw = h('select', { class: 'jvc-sel', 'aria-label': 'Tipo de gráfica', onchange: () => { c.grafico.tipo = sw.value; wrap.replaceWith(node(c)); } }, [['barras', 'Barras'], ['barras_h', 'Barras horiz.'], ['lineas', 'Líneas'], ['circular', 'Circular'], ['apiladas', 'Apiladas']].map(([v, l]) => h('option', { value: v, text: l })));
     sw.value = c.grafico.tipo;
     const b = (t, f) => h('button', { class: 'jvr-btn', type: 'button', onclick: f, text: t });
-    wrap = h('div', { class: 'jvr jvc' }, h('div', { class: 'jvr-h' }, h('span', { class: 'jvr-i', 'aria-hidden': 'true', text: '📊' }), h('div', { class: 'jvr-t' }, h('b', { text: c.grafico.titulo || 'Gráfica' }), h('span', { text: 'Gráfica' + (c.fuente ? ' · ' + c.fuente : '') }))), body, h('div', { class: 'jvr-a' }, [sw, b('Copiar imagen', () => copyImg(c)), b('Descargar PNG', () => dl(c))]));
+    wrap = h('div', { class: 'jvr jvc' }, h('div', { class: 'jvr-h' }, h('span', { class: 'jvr-i', 'aria-hidden': 'true', text: 'CHART' }), h('div', { class: 'jvr-t' }, h('b', { text: c.grafico.titulo || 'Gráfica' }), h('span', { text: 'Gráfica' + (c.fuente ? ' · ' + c.fuente : '') }))), body, h('div', { class: 'jvr-a' }, [sw, b('Copiar imagen', () => copyImg(c)), b('Descargar PNG', () => dl(c))]));
     return wrap;
   }
   /* superposición para chats que no pintan tarjetas (agentes) */
@@ -25253,7 +25253,7 @@ Todas admiten "fuente" (de dónde salen los datos) y "notas" (guion del orador, 
     const bd = h('div', { class: 'jvc-ov', role: 'dialog', 'aria-label': 'Gráfica' }), box = h('div', { class: 'jvc-box' });
     const close = () => bd.remove(); box.append(node(c), h('button', { class: 'jvr-btn jvc-x', type: 'button', onclick: close, text: 'Cerrar' })); bd.append(box); bd.addEventListener('click', (e) => { if (e.target === bd) close(); }); document.body.append(bd);
   }
-  const css = document.createElement('style'); css.textContent = '.jvc{border:1px solid rgba(128,128,150,.35);border-radius:18px;background:var(--surface,#fff);color:var(--fg,#111);overflow:hidden;font-size:14px;margin:10px 0 2px}.jvc .jvr-h{display:flex;gap:10px;align-items:center;padding:12px 14px 4px}.jvc .jvr-i{font-size:20px}.jvc .jvr-t{display:flex;flex-direction:column;min-width:0}.jvc .jvr-t span{font-size:12px;opacity:.65}.jvc .jvr-a{display:flex;flex-wrap:wrap;gap:8px;padding:6px 12px 12px}.jvc .jvr-btn{border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer}.jvc-cv{width:100%;height:auto;display:block;border-radius:10px;background:#fff}.jvc-b{padding:8px 10px}.jvc-sel{background:var(--surface,#222);color:inherit;border:1px solid var(--line,#444);border-radius:10px;padding:6px 8px;font:inherit}.jvc-ov{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.jvc-box{max-width:760px;width:100%;max-height:92vh;overflow:auto;background:var(--surface,#1c1c1e);border-radius:20px;padding:10px}.jvc-x{margin:8px auto 4px;display:block;border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer}'; document.head.append(css);
+  const css = document.createElement('style'); css.textContent = '.jvc{border:1px solid rgba(128,128,150,.35);border-radius:18px;background:var(--surface,#fff);color:var(--fg,#111);overflow:hidden;font-size:14px;margin:10px 0 2px}.jvc .jvr-h{display:flex;gap:10px;align-items:center;padding:12px 14px 4px}.jvc .jvr-i{font:700 10.5px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;padding:7px 6px;border:1px solid currentColor;border-radius:7px;opacity:.75}.jvc .jvr-t{display:flex;flex-direction:column;min-width:0}.jvc .jvr-t span{font-size:12px;opacity:.65}.jvc .jvr-a{display:flex;flex-wrap:wrap;gap:8px;padding:6px 12px 12px}.jvc .jvr-btn{border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer}.jvc-cv{width:100%;height:auto;display:block;border-radius:10px;background:#fff}.jvc-b{padding:8px 10px}.jvc-sel{background:var(--surface,#222);color:inherit;border:1px solid var(--line,#444);border-radius:10px;padding:6px 8px;font:inherit}.jvc-ov{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.jvc-box{max-width:760px;width:100%;max-height:92vh;overflow:auto;background:var(--surface,#1c1c1e);border-radius:20px;padding:10px}.jvc-x{margin:8px auto 4px;display:block;border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 16px;font:inherit;font-weight:600;cursor:pointer}'; document.head.append(css);
   const tool = () => ({ name: 'crear_grafica', description: 'Crea una gráfica (barras, barras_h, lineas, circular, apiladas) con datos reales y se la ENSEÑA al estudiante al instante en el chat, con botones para copiarla como imagen y descargarla. Úsala cuando pida un gráfico, diagrama de barras, tarta, evolución, comparativa o visualizar datos (de sus apuntes, un ejercicio o los que él te dé). Pon un título claro, la unidad si la hay y usa SOLO datos reales o dados por el estudiante; no inventes cifras. Máximo 12 etiquetas y 5 series. circular admite una sola serie.',
     inputSchema: { type: 'object', properties: { titulo: { type: 'string' }, tipo: { type: 'string', enum: TIPOS }, unidad: { type: 'string', description: 'p. ej. €, %, M€' }, etiquetas: { type: 'array', items: { type: 'string' } }, series: { type: 'array', items: { type: 'object', properties: { nombre: { type: 'string' }, valores: { type: 'array', items: { type: 'number' } } }, required: ['nombre', 'valores'] } }, fuente: { type: 'string', description: 'origen de los datos si se conoce' }, tema: { type: 'string', enum: ['ejecutivo', 'editorial', 'oceano'] } }, required: ['titulo', 'etiquetas', 'series'] },
     execute: async (a) => { a = a || {}; const g = clean(a); const c = { k: 'chart', title: g.titulo || 'Gráfica', grafico: g, fuente: String(a.fuente || '').slice(0, 120), tema: ['ejecutivo', 'editorial', 'oceano'].includes(a.tema) ? a.tema : 'ejecutivo', at: Date.now() };
@@ -25527,7 +25527,7 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
 
   /* ---------- tarjetas en el chat ---------- */
   const css = document.createElement('style'); css.id = 'fa-jvmax-css';
-  css.textContent = '.jm{border:1px solid rgba(128,128,150,.35);border-radius:18px;background:var(--surface,#fff);color:var(--fg,#111);overflow:hidden;font-size:14px;margin:10px 0 2px}.jm-h{display:flex;gap:10px;align-items:center;padding:12px 14px 6px}.jm-i{font-size:22px;flex:none}.jm-t{display:flex;flex-direction:column;min-width:0}.jm-t b{overflow-wrap:anywhere}.jm-t span{font-size:12px;opacity:.65}.jm-b{padding:4px 14px 8px}.jm-a{display:flex;flex-wrap:wrap;gap:8px;padding:6px 12px 12px}.jm-btn{border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer;line-height:1.1}.jm-btn.pri{background:var(--accent,#2563eb);border-color:transparent;color:#fff}.jm-btn:focus-visible{outline:2px solid var(--accent,#2563eb);outline-offset:2px}.jm-p{height:6px;border-radius:9px;background:rgba(128,128,150,.2);overflow:hidden;margin:6px 0}.jm-p i{display:block;height:100%;background:var(--accent,#2563eb);border-radius:9px;transition:width .5s}.jm-s{font-size:12.5px;opacity:.75;margin:4px 0}.jm-pre{max-height:240px;overflow:auto;background:rgba(128,128,150,.1);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:4px 0}.jm-txt{font-size:13px;line-height:1.5;opacity:.85;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;margin:4px 0}.jm-tw{overflow:auto;max-height:300px;border:1px solid rgba(128,128,150,.3);border-radius:10px;margin:4px 0}.jm-tw table{border-collapse:collapse;font-size:12.5px;min-width:100%}.jm-tw th{background:#1f3a5f;color:#fff;text-align:left;position:sticky;top:0}.jm-tw th,.jm-tw td{padding:5px 8px;border-bottom:1px solid rgba(128,128,150,.2);white-space:nowrap}.jm-tw td.n{text-align:right;font-variant-numeric:tabular-nums}.jm-tw td.f{font-style:italic;opacity:.7}.jm-sel{background:var(--surface,#fff);color:inherit;border:1px solid rgba(128,128,150,.4);border-radius:10px;padding:7px 8px;font:inherit;max-width:100%}.jm-cv{width:100%;height:auto;display:block;border-radius:10px;border:1px solid rgba(128,128,150,.25)}.jm-strip{display:flex;gap:6px;margin-top:6px;overflow-x:auto}.jm-ov{position:fixed;inset:0;z-index:94;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.jm-box{max-width:720px;width:100%;max-height:92vh;overflow:auto;background:var(--bg,#fff);border-radius:20px;padding:10px}.jm-x{margin:8px auto 4px;display:block}.jm-strip canvas{width:24%;min-width:70px;height:auto;border-radius:6px;border:1px solid rgba(128,128,150,.25);cursor:pointer}';
+  css.textContent = '.jm{border:1px solid rgba(128,128,150,.35);border-radius:18px;background:var(--surface,#fff);color:var(--fg,#111);overflow:hidden;font-size:14px;margin:10px 0 2px}.jm-h{display:flex;gap:10px;align-items:center;padding:12px 14px 6px}.jm-i{flex:none;font:700 10.5px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;padding:7px 6px;border:1px solid currentColor;border-radius:7px;opacity:.75;min-width:34px;text-align:center}.jm-t{display:flex;flex-direction:column;min-width:0}.jm-t b{overflow-wrap:anywhere}.jm-t span{font-size:12px;opacity:.65}.jm-b{padding:4px 14px 8px}.jm-a{display:flex;flex-wrap:wrap;gap:8px;padding:6px 12px 12px}.jm-btn{border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer;line-height:1.1}.jm-btn.pri{background:var(--accent,#2563eb);border-color:transparent;color:#fff}.jm-btn:focus-visible{outline:2px solid var(--accent,#2563eb);outline-offset:2px}.jm-p{height:6px;border-radius:9px;background:rgba(128,128,150,.2);overflow:hidden;margin:6px 0}.jm-p i{display:block;height:100%;background:var(--accent,#2563eb);border-radius:9px;transition:width .5s}.jm-s{font-size:12.5px;opacity:.75;margin:4px 0}.jm-pre{max-height:240px;overflow:auto;background:rgba(128,128,150,.1);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:4px 0}.jm-txt{font-size:13px;line-height:1.5;opacity:.85;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;margin:4px 0}.jm-tw{overflow:auto;max-height:300px;border:1px solid rgba(128,128,150,.3);border-radius:10px;margin:4px 0}.jm-tw table{border-collapse:collapse;font-size:12.5px;min-width:100%}.jm-tw th{background:#1f3a5f;color:#fff;text-align:left;position:sticky;top:0}.jm-tw th,.jm-tw td{padding:5px 8px;border-bottom:1px solid rgba(128,128,150,.2);white-space:nowrap}.jm-tw td.n{text-align:right;font-variant-numeric:tabular-nums}.jm-tw td.f{font-style:italic;opacity:.7}.jm-sel{background:var(--surface,#fff);color:inherit;border:1px solid rgba(128,128,150,.4);border-radius:10px;padding:7px 8px;font:inherit;max-width:100%}.jm-cv{width:100%;height:auto;display:block;border-radius:10px;border:1px solid rgba(128,128,150,.25)}.jm-strip{display:flex;gap:6px;margin-top:6px;overflow-x:auto}.jm-ov{position:fixed;inset:0;z-index:94;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.jm-box{max-width:720px;width:100%;max-height:92vh;overflow:auto;background:var(--bg,#fff);border-radius:20px;padding:10px}.jm-x{margin:8px auto 4px;display:block}.jm-strip canvas{width:24%;min-width:70px;height:auto;border-radius:6px;border:1px solid rgba(128,128,150,.25);cursor:pointer}';
   document.head.append(css);
   const B = (t, f, pri, aria) => h('button', { class: 'jm-btn' + (pri ? ' pri' : ''), type: 'button', onclick: f, text: t, ...(aria ? { 'aria-label': aria } : {}) });
   const frame = (ic, title, sub, body, acts) => h('div', { class: 'jm' }, h('div', { class: 'jm-h' }, h('span', { class: 'jm-i', 'aria-hidden': 'true', text: ic }), h('div', { class: 'jm-t' }, h('b', { text: title }), h('span', { text: sub }))), body, acts);
@@ -25544,7 +25544,7 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
   async function docPdf(d, gid) { try { if (typeof pdfBuild !== 'function') throw new Error('sin PDF'); const u8 = typeof gdPdfBytes === 'function' ? gdPdfBytes(d) : pdfBuild(d.title, [d.subjectName || ''], d.markdown, d.title); await save(fname(d.title, 'pdf'), u8); } catch (e) { note({ kind: 'error', title: 'No he podido crear el PDF', msg: errTxt(e) }); } }
 
   KINDS.fxdoc = (c) => {
-    const body = h('div', { class: 'jm-b' }), acts = h('div', { class: 'jm-a' }), node = frame('📄', c.title || 'Documento', (TIPOS[c.tipo] || TIPOS.otro)[0] + (c.subj ? ' · ' + c.subj : ''), body, acts);
+    const body = h('div', { class: 'jm-b' }), acts = h('div', { class: 'jm-a' }), node = frame('DOC', c.title || 'Documento', (TIPOS[c.tipo] || TIPOS.otro)[0] + (c.subj ? ' · ' + c.subj : ''), body, acts);
     const paint = () => {
       const d = state.gd && state.gd[c.gid], j = JOBS[c.gid];
       if (d) {
@@ -25555,14 +25555,14 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
         acts.replaceChildren(...kids); return true;
       }
       if (j && j.st === 'run') { progress(body, j); acts.replaceChildren(B('Detener', () => { try { j.ctl.abort(); } catch (e) {} })); return false; }
-      if (j && j.st === 'err') { body.replaceChildren(h('p', { class: 'jm-s', text: '⚠️ ' + j.err })); acts.replaceChildren(B('Reintentar', () => { j.retry(); poll(paint, node); })); return true; }
+      if (j && j.st === 'err') { body.replaceChildren(h('p', { class: 'jm-s', text: 'Error: ' + j.err })); acts.replaceChildren(B('Reintentar', () => { j.retry(); poll(paint, node); })); return true; }
       body.replaceChildren(h('p', { class: 'jm-s', text: 'No encuentro este documento: puede que se borrara.' })); acts.replaceChildren(); return true;
     };
     poll(paint, node); return node;
   };
 
   KINDS.fxdeck = (c) => {
-    const body = h('div', { class: 'jm-b' }), acts = h('div', { class: 'jm-a' }), node = frame('🎞️', c.title || 'Presentación', 'Presentación', body, acts); let shown = false;
+    const body = h('div', { class: 'jm-b' }), acts = h('div', { class: 'jm-a' }), node = frame('PPT', c.title || 'Presentación', 'Presentación', body, acts); let shown = false;
     const view = async () => {
       const cv = h('canvas', { class: 'jm-cv', role: 'img', 'aria-label': 'Portada de la presentación' }), strip = h('div', { class: 'jm-strip' });
       body.replaceChildren(h('p', { class: 'jm-s', role: 'status', text: 'Cargando vista previa…' }));
@@ -25576,7 +25576,7 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
     const paint = () => {
       const j = JOBS[c.id];
       if (j && j.st === 'run') { progress(body, j); acts.replaceChildren(B('Detener', () => { try { j.ctl.abort(); } catch (e) {} })); return false; }
-      if (j && j.st === 'err') { body.replaceChildren(h('p', { class: 'jm-s', text: '⚠️ ' + j.err })); acts.replaceChildren(B('Reintentar', () => { j.retry(); poll(paint, node); })); return true; }
+      if (j && j.st === 'err') { body.replaceChildren(h('p', { class: 'jm-s', text: 'Error: ' + j.err })); acts.replaceChildren(B('Reintentar', () => { j.retry(); poll(paint, node); })); return true; }
       if (!shown) { shown = true; view(); } return true;
     };
     poll(paint, node); return node;
@@ -25592,14 +25592,14 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
     const paint = () => { const kids = []; if (sheets.length > 1) { const sel = h('select', { class: 'jm-sel', 'aria-label': 'Hoja', onchange: () => { cur = +sel.value; paint(); } }, sheets.map((s, i) => h('option', { value: String(i), text: s.nombre }))); sel.value = String(cur); kids.push(sel); } body.replaceChildren(...kids, ...tbl()); };
     paint();
     const acts = h('div', { class: 'jm-a' }, B('Descargar Excel', () => save(fname(c.title, 'xlsx'), xlsx(c.title, sheets)), true), B('Descargar CSV', () => save(fname(c.title + (sheets.length > 1 ? ' - ' + sheets[cur].nombre : ''), 'csv'), csvOf(sheets[cur]))), B('Copiar tabla', () => copy(tsvOf(sheets[cur]), 'Tabla')));
-    return frame('📊', c.title || 'Hoja de cálculo', 'Hoja de cálculo · ' + sheets.length + (sheets.length === 1 ? ' hoja' : ' hojas'), body, acts);
+    return frame('XLS', c.title || 'Hoja de cálculo', 'Hoja de cálculo · ' + sheets.length + (sheets.length === 1 ? ' hoja' : ' hojas'), body, acts);
   };
 
   KINDS.fxfile = (c) => {
     const txt = String(c.contenido || ''), lines = txt.split('\n');
     const body = h('div', { class: 'jm-b' }, h('pre', { class: 'jm-pre', tabindex: '0', 'aria-label': 'Contenido de ' + c.nombre, text: lines.slice(0, 60).join('\n') + (lines.length > 60 ? '\n…' : '') }), c.descripcion ? h('p', { class: 'jm-s', text: c.descripcion }) : null);
     const acts = h('div', { class: 'jm-a' }, B('Descargar', () => save(c.nombre, txt), true), B('Copiar', () => copy(txt, 'Contenido')));
-    return frame('🗂️', c.nombre, 'Archivo · ' + kb(enc.encode(txt).length) + ' · ' + lines.length + ' líneas', body, acts);
+    return frame('FILE', c.nombre, 'Archivo · ' + kb(enc.encode(txt).length) + ' · ' + lines.length + ' líneas', body, acts);
   };
 
   /* ---------- herramientas ---------- */
@@ -25756,7 +25756,7 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
     const r = b0.apply(this, arguments);
     try {
       const bar = root.querySelector('.pv-edtb'); if (bar && !bar.querySelector('.pvs')) {
-        const btn = h('button', { class: 'btn pvs-btn', type: 'button', title: 'Guarda ahora y comprueba que se ha guardado', onclick: () => manual(root, btn) }, '💾 Guardar');
+        const btn = h('button', { class: 'btn pvs-btn', type: 'button', title: 'Guarda ahora y comprueba que se ha guardado', onclick: () => manual(root, btn) }, 'Guardar');
         bar.append(h('span', { class: 'pvs' }, h('span', { class: 'pvs-chip ok', role: 'status', 'aria-live': 'polite', text: 'Guardado' }), btn)); chip(root);
       }
     } catch (e) {}
@@ -25772,6 +25772,393 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
   const css = document.createElement('style'); css.textContent = '.pvs{display:inline-flex;align-items:center;gap:6px;margin-left:auto;flex:none;position:sticky;right:-12px;padding:0 12px 0 10px;background:var(--surface,#fff);box-shadow:-10px 0 12px -6px var(--surface,#fff)}@media (max-width:560px){.pvs-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis}.pvs-btn{padding:6px 9px!important}}.pvs-chip{font-size:12px;padding:5px 9px;border-radius:999px;background:rgba(34,160,90,.14);color:#16794a;white-space:nowrap;font-weight:600}.pvs-chip.busy{background:rgba(128,128,150,.16);color:inherit;opacity:.85}.pvs-chip.err{background:rgba(220,60,60,.14);color:#b42318}@media (prefers-color-scheme:dark){.pvs-chip{color:#5ad69a}.pvs-chip.err{color:#ff8a80}}';
   document.head.append(css);
   window.__pvSave = { st, write, KEY };
+})();
+
+</script>
+<script id="fa-jvsuper">
+/* Súper-apuntes más rápidos y sin huecos: cada sección recibe SOLO su trozo del material (bloques numerados asignados por el plan),
+   en vez del material entero en cada llamada. Además, cada recurso con IA trabaja con un rol y criterio propios. */
+(function () {
+  'use strict';
+  if (window.__faSuper) return; window.__faSuper = true;
+
+  /* ---------- material en bloques numerados ---------- */
+  function paras(material) {
+    const raw = String(material || '').replace(/\r\n?/g, '\n').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean), out = [];
+    let cur = '';
+    const push = (t) => { t = t.trim(); if (!t) return; while (t.length > 2600) { let c = t.lastIndexOf('. ', 2400); if (c < 1200) c = t.lastIndexOf(' ', 2400); if (c < 800) c = 2400; out.push(t.slice(0, c + 1).trim()); t = t.slice(c + 1).trim(); } if (t) out.push(t); };
+    raw.forEach((p) => { const head = /^---\s.+\s---$/.test(p) || /^#{1,4}\s/.test(p); if (head && cur) { push(cur); cur = ''; } if ((cur + '\n\n' + p).length > 900 && cur) { push(cur); cur = p; } else cur = cur ? cur + '\n\n' + p : p; });
+    if (cur) push(cur); return out;
+  }
+  window.genParPlan = function (run) {
+    run.paras = paras(run.material);
+    const marked = run.paras.map((p, i) => '[¶' + (i + 1) + ']\n' + p).join('\n\n');
+    return 'Responde SOLO con un array JSON de objetos {"titulo":"título de la sección","cubre":"qué parte del material cubre, en una frase","palabras":número aproximado de palabras,"desde":nº del PRIMER bloque [¶N] que trata,"hasta":nº del ÚLTIMO bloque [¶N] que trata}. Los ' + run.paras.length + ' bloques deben quedar TODOS cubiertos, en orden, sin huecos ni solapes (la primera sección empieza en 1 y la última termina en ' + run.paras.length + ').\n\nAPUNTES (divididos en bloques numerados [¶1]…[¶' + run.paras.length + ']):\n"""\n' + marked + '\n"""';
+  };
+  window.genParAssign = function (run, arr, out) {
+    const N = (run.paras || []).length; if (!N || !out || !out.length) return;
+    const src = (arr || []).filter((x) => x && typeof x.titulo === 'string' && x.titulo.trim()).slice(0, 40);
+    let rg = out.map((o, i) => { const x = src[i] || {}; const a = parseInt(x.desde, 10), b = parseInt(x.hasta, 10); return [isFinite(a) ? a : NaN, isFinite(b) ? b : NaN]; });
+    const valid = rg.filter(([a, b]) => a >= 1 && b >= a && b <= N).length;
+    if (valid < Math.ceil(out.length * 0.6)) {
+      /* reparto proporcional a las palabras previstas */
+      const tot = out.reduce((s, o) => s + (o.palabras || 1), 0); let acc = 0;
+      rg = out.map((o) => { const a = Math.floor(acc / tot * N) + 1; acc += (o.palabras || 1); const b = Math.max(a, Math.floor(acc / tot * N)); return [a, b]; });
+    }
+    /* contiguos y completos */
+    for (let i = 0; i < rg.length; i++) {
+      let [a, b] = rg[i]; a = i === 0 ? 1 : rg[i - 1][1] + 1; if (!(b >= a)) b = a; if (i === rg.length - 1) b = N; b = Math.min(b, N - (rg.length - 1 - i)); if (b < a) b = a; rg[i] = [a, Math.min(b, N)];
+    }
+    out.forEach((o, i) => { o.rng = rg[i]; });
+  };
+  window.genParSlice = function (run, sec) {
+    const P = run.paras || [], r = sec && sec.rng;
+    if (!P.length || !r) return run.material;
+    const [a, b] = r, body = P.slice(a - 1, b).join('\n\n'), before = a > 1 ? P[a - 2].slice(-500) : '', after = b < P.length ? P[b].slice(0, 300) : '';
+    return (before ? '[…contexto previo, ya lo cubre otra sección: …' + before + ']\n\n' : '') + '=== TU PARTE DEL MATERIAL (bloques ' + a + '–' + b + ' de ' + P.length + '): redáctala ENTERA, sin omitir nada ===\n' + body + (after ? '\n\n[…continúa en la siguiente sección: ' + after + '…]' : '');
+  };
+
+  /* ---------- rol y criterio de cada recurso (la IA trabaja como Claude, pero centrada en ESE recurso) ---------- */
+  const ROLE = {
+    resumen: 'ROL: eres Claude actuando como experto en síntesis para estudiar. Criterio: jerarquiza (lo que más cae en examen, primero y en negrita), conserva definiciones, cifras y fórmulas exactas, elimina repeticiones y relleno, y termina con lo imprescindible para repasar. Calidad antes que longitud, pero no te saltes ningún tema del material.\n',
+    esquema: 'ROL: eres Claude actuando como diseñador de esquemas de estudio. Criterio: estructura clara de idea → partes → detalles, etiquetas cortas y precisas, relaciones explícitas (causa, tipo, fase, comparación) y ningún tema del material sin representar.\n',
+    flashcards: 'ROL: eres Claude actuando como experto en repaso espaciado. Criterio: una idea por tarjeta, preguntas concretas que obliguen a recordar (no a reconocer), respuestas cortas y exactas, prioriza definiciones, diferencias, cifras, fórmulas y causas; reparte las tarjetas por todos los temas del material.\n',
+    test: 'ROL: eres Claude actuando como profesor que redacta exámenes tipo test. Criterio: preguntas inequívocas, una sola opción correcta comprobable en los apuntes, distractores plausibles (errores típicos, no absurdos), variedad de dificultad y explicación breve del porqué; cubre todos los temas.\n',
+    ejercicios: 'ROL: eres Claude actuando como profesor de prácticas. Criterio: ejercicios como los de examen, datos completos y coherentes, dificultad creciente y solución paso a paso con el razonamiento y el resultado final destacado; usa solo métodos del material.\n'
+  };
+  try { if (typeof PROMPTS === 'object' && PROMPTS) Object.keys(ROLE).forEach((k) => { if (PROMPTS[k] && PROMPTS[k].indexOf('ROL: eres Claude') < 0) PROMPTS[k] = ROLE[k] + PROMPTS[k]; }); } catch (e) {}
+  window.__faSuperLib = { paras };
+})();
+
+</script>
+<script id="fa-jvplus">
+/* Jarvis+: bloques de estudio sin hora, Jarvis con el PDF abierto (leer y añadir partes de la explicación),
+   contexto de toda la app, respuestas largas cuando hay que explicar y fuera las sugerencias proactivas de los agentes */
+(function () {
+  'use strict';
+  if (window.__faPlus) return; window.__faPlus = true;
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const note = (o) => { try { return window.faNotify(o); } catch (e) { try { window.toast(o.title + (o.msg ? ': ' + o.msg : '')); } catch (x) {} } };
+  const uidx = () => (typeof uid === 'function' ? uid() : Math.random().toString(36).slice(2, 10));
+  const today = () => (typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10));
+  const subjOf = (a) => { const id = a && (a.asignatura_id || a.subjectId); if (id && state.subjects[id]) return id; const q = norm(a && a.asignatura); if (q) { const ks = Object.keys(state.subjects); return ks.find((k) => norm(state.subjects[k].name) === q) || ks.find((k) => norm(state.subjects[k].name).includes(q) || q.includes(norm(state.subjects[k].name))) || ''; } return ''; };
+
+  /* =========================================================
+     1) BLOQUES DE ESTUDIO SIN HORA
+     ========================================================= */
+  const B = (window.__bsh = window.__bsh || { items: [], loaded: false, loading: null });
+  async function load() {
+    if (B.loaded) return B.items; if (B.loading) return B.loading;
+    B.loading = (async () => { try { if (!db) return B.items; const sn = await db.doc('meta/bloques_sin_hora').get(); const v = sn && typeof sn.data === 'function' ? sn.data() : null; if (v && Array.isArray(v.items)) B.items = v.items.filter((x) => x && x.id); B.loaded = true; } catch (e) {} B.loading = null; return B.items; })();
+    return B.loading;
+  }
+  async function save() { try { await put('meta/bloques_sin_hora', { items: B.items.slice(-300), updatedAt: Date.now() }); } catch (e) {} repaint(); }
+  function repaint() { try { if (state.view === 'inicio' && document.getElementById('dayCard')) renderDay(); } catch (e) {} }
+  const visible = (day) => B.items.filter((x) => (!x.day || x.day === day || (x.day < day && !x.done && day === today())) && (!x.done || x.doneDay === day));
+  function create(o) {
+    const sid = subjOf(o), s = sid ? state.subjects[sid] : null, n = Math.max(1, Math.min(12, parseInt(o.cantidad, 10) || 1)), mins = Math.max(10, Math.min(240, parseInt(o.duracion_min, 10) || 50));
+    const temas = Array.isArray(o.temas) && o.temas.length ? o.temas : [o.tema || ''];
+    const day = o.fecha === 'cualquiera' || o.sin_dia ? '' : (/^\d{4}-\d{2}-\d{2}$/.test(o.fecha || '') ? o.fecha : today());
+    const out = [];
+    for (let i = 0; i < n; i++) { const t = String(temas[i % temas.length] || '').trim(); out.push({ id: uidx(), sid, subject: s ? s.name : 'Estudio', hue: s ? (s.hue ?? 220) : 220, title: (t || (s ? 'Estudiar ' + s.name : 'Bloque de estudio')).slice(0, 90), mins, day, done: false, createdAt: Date.now() }); }
+    B.items.push(...out); return out;
+  }
+  async function complete(it, v) { it.done = v !== false; it.doneDay = it.done ? today() : ''; it.doneAt = it.done ? Date.now() : 0; await save(); }
+  async function remove(it) { B.items = B.items.filter((x) => x !== it); await save(); }
+  async function schedule(it, day, ini) {
+    const re = /^([01]\d|2[0-3]):[0-5]\d$/; if (!re.test(ini || '')) return 'Pon una hora válida (HH:MM).';
+    const toM = (t) => +t.slice(0, 2) * 60 + +t.slice(3), fin = (() => { const m = Math.min(toM(ini) + it.mins, 23 * 60 + 59); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); })();
+    let T = null; try { T = jvTools().find((t) => t && t.name === 'anadir_sesion_estudio'); } catch (e) {}
+    if (!T) return 'No he podido acceder al plan.';
+    const r = String(await T.execute({ asignatura_id: it.sid || undefined, fecha: day || today(), inicio: ini, fin, tema: it.title }));
+    if (/^Bloques añadidos/.test(r)) { B.items = B.items.filter((x) => x !== it); await save(); }
+    return r;
+  }
+  window.faBloques = { load, create, complete, remove, schedule, items: () => B.items };
+
+  const css = document.createElement('style'); css.id = 'fa-plus-css';
+  css.textContent = [
+    '.bsh{margin-top:14px;border-top:1px solid var(--line,rgba(120,120,140,.2));padding-top:12px}',
+    '.bsh-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}.bsh-h b{font-size:14px}.bsh-h .bsh-k{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;opacity:.6}',
+    '.bsh-h .grow{flex:1}.bsh-add{border:1px dashed var(--line,rgba(120,120,140,.4));background:transparent;color:inherit;border-radius:10px;padding:6px 10px;font:inherit;font-size:13px;cursor:pointer}',
+    '.bsh-it{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid var(--line,rgba(120,120,140,.22));border-radius:12px;margin:6px 0;background:var(--surface,#fff)}',
+    '.bsh-it.done{opacity:.6}.bsh-it.done .bsh-t{text-decoration:line-through}',
+    '.bsh-dot{width:10px;height:10px;border-radius:50%;flex:none}.bsh-m{flex:1;min-width:0}.bsh-t{font-weight:600;font-size:14px;overflow-wrap:anywhere}.bsh-s{font-size:12px;opacity:.65}',
+    '.bsh-b{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.bsh-b button{border:1px solid var(--line,rgba(120,120,140,.35));background:transparent;color:inherit;border-radius:9px;padding:6px 9px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;min-height:34px}',
+    '.bsh-b button.ok{background:var(--accent,#2563eb);color:#fff;border-color:transparent}.bsh-b input[type=time]{border:1px solid var(--line,rgba(120,120,140,.35));border-radius:9px;padding:5px 6px;font:inherit;background:var(--surface,#fff);color:inherit}',
+    '.bsh-new{display:grid;grid-template-columns:1fr 1fr 90px auto;gap:6px;margin:6px 0}.bsh-new select,.bsh-new input{min-width:0;border:1px solid var(--line,rgba(120,120,140,.35));border-radius:9px;padding:7px 8px;font:inherit;background:var(--surface,#fff);color:inherit}',
+    '@media (max-width:560px){.bsh-it{flex-wrap:wrap}.bsh-b{width:100%;justify-content:flex-start}.bsh-new{grid-template-columns:1fr 1fr}}',
+    '#proHome{display:none!important}',
+    '.fa-selbtn{position:fixed;z-index:2147480500;display:flex;gap:4px;background:#111827;color:#fff;border-radius:12px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.3)}.fa-selbtn button{background:transparent;border:0;color:#fff;font:600 13px/1 -apple-system,BlinkMacSystemFont,sans-serif;padding:9px 10px;border-radius:9px;cursor:pointer}.fa-selbtn button:hover{background:rgba(255,255,255,.14)}'
+  ].join('');
+  document.head.append(css);
+
+  function bshNode(day) {
+    const list = visible(day), box = h('div', { class: 'bsh', role: 'region', 'aria-label': 'Bloques sin hora' });
+    let adding = false; const form = h('div', { class: 'bsh-new', hidden: true });
+    const subs = Object.entries(state.subjects || {});
+    const sel = h('select', { 'aria-label': 'Asignatura' }, [h('option', { value: '', text: 'Asignatura…' })].concat(subs.map(([k, s]) => h('option', { value: k, text: s.name }))));
+    const tit = h('input', { type: 'text', placeholder: 'Tema (opcional)', maxlength: '90', 'aria-label': 'Tema' });
+    const min = h('select', { 'aria-label': 'Duración' }, [25, 50, 90].map((m) => h('option', { value: String(m), text: m + ' min' }))); min.value = '50';
+    form.append(sel, tit, min, h('button', { class: 'bsh-add', type: 'button', onclick: async () => { if (!sel.value && !tit.value.trim()) { tit.focus(); return; } create({ asignatura_id: sel.value, tema: tit.value, duracion_min: min.value, fecha: day }); await save(); } }, 'Añadir'));
+    box.append(h('div', { class: 'bsh-h' }, h('span', { class: 'bsh-k', text: 'Sin hora' }), h('b', { text: list.filter((x) => !x.done).length ? 'Bloques para cuando puedas' : 'Bloques sin hora' }), h('span', { class: 'grow' }),
+      h('button', { class: 'bsh-add', type: 'button', 'aria-expanded': 'false', onclick: (e) => { adding = !adding; form.hidden = !adding; e.currentTarget.setAttribute('aria-expanded', String(adding)); if (adding) setTimeout(() => sel.focus(), 30); } }, '+ Bloque sin hora')), form);
+    if (!list.length) box.append(h('p', { class: 'small', style: 'opacity:.65;margin:2px 0', text: 'Pídele a Jarvis «ponme 3 bloques de Micro sin hora» y hazlos cuando puedas: los completas o les pones hora aquí.' }));
+    list.forEach((it) => {
+      const btns = h('div', { class: 'bsh-b' });
+      const base = () => btns.replaceChildren(
+        h('button', { class: it.done ? '' : 'ok', type: 'button', onclick: () => complete(it, !it.done) }, it.done ? 'Deshacer' : '✓ Hecho'),
+        it.done ? null : h('button', { type: 'button', onclick: () => { const ti = h('input', { type: 'time', 'aria-label': 'Hora de inicio', value: (() => { const d = new Date(); d.setMinutes(Math.ceil((d.getMinutes() + 5) / 15) * 15); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes() % 60).padStart(2, '0'); })() }); btns.replaceChildren(ti, h('button', { class: 'ok', type: 'button', onclick: async (e) => { e.currentTarget.disabled = true; const r = await schedule(it, day, ti.value); note(/^Bloques añadidos/.test(r) ? { kind: 'ok', title: 'Bloque programado', msg: it.title + ' · ' + ti.value, ms: 4000 } : { kind: 'warn', title: 'No lo he programado', msg: r.slice(0, 240) }); if (!/^Bloques añadidos/.test(r)) base(); } }, 'Programar'), h('button', { type: 'button', onclick: base }, 'Cancelar')); setTimeout(() => ti.focus(), 30); } }, 'Poner hora'),
+        h('button', { type: 'button', 'aria-label': 'Quitar bloque', onclick: () => remove(it) }, '×'));
+      base();
+      box.append(h('div', { class: 'bsh-it' + (it.done ? ' done' : '') }, h('span', { class: 'bsh-dot', style: 'background:hsl(' + (it.hue ?? 220) + ' 70% 50%)' }), h('div', { class: 'bsh-m' }, h('div', { class: 'bsh-t', text: it.title }), h('div', { class: 'bsh-s', text: it.subject + ' · ' + it.mins + ' min' + (it.day ? '' : ' · cualquier día') + (it.done ? ' · hecho' : '') })), btns));
+    });
+    return box;
+  }
+  try {
+    const d0 = window.renderDay;
+    if (typeof d0 === 'function') window.renderDay = function () {
+      const r = d0.apply(this, arguments);
+      try { const card = document.getElementById('dayCard'); if (card) { card.querySelectorAll('.bsh').forEach((x) => x.remove()); const day = state.homeDay || today(); card.append(bshNode(day)); if (!B.loaded) load().then(() => { if (B.items.length) repaint(); }); } } catch (e) {}
+      return r;
+    };
+  } catch (e) {}
+
+  /* =========================================================
+     2) FUERA LAS SUGERENCIAS PROACTIVAS DE LOS AGENTES
+     ========================================================= */
+  try { window.proMode = function () { return 'off'; }; } catch (e) {}
+  try { window.renderPro = function () { const b = document.getElementById('proHome'); if (b) { b.hidden = true; b.replaceChildren(); } }; } catch (e) {}
+
+  /* =========================================================
+     3) PDF ABIERTO: leer, añadir partes de la explicación (por petición o seleccionando)
+     ========================================================= */
+  const pvRoot = () => { const r = document.getElementById('pdfView'); return r && r._it ? r : null; };
+  async function pdfAdd(root, page, text, how) {
+    const n = Math.max(1, Math.min((root._slots || []).length || 1, parseInt(page, 10) || pvCur(root)));
+    if (how === 'dentro' && root._mod && typeof pvPasteInPdf === 'function') { if (await pvPasteInPdf(root, n, 0.08, 0.1, text)) return n; }
+    pvAddSheet(root, n, text); return n;
+  }
+  const ADD_RE = /\b(anad|añad|agreg|pon|ponme|ponlo|pega|pegal|inserta|mete|meter|copia)\w*\b[\s\S]{0,80}\b(pdf|pagina|página|hoja|aqui|aquí|documento|apuntes)\b/;
+  const p0 = window.pvAsk;
+  if (typeof p0 === 'function') window.pvAsk = async function (root, q) {
+    const qq = norm(q);
+    if (!ADD_RE.test(qq) || !(root._chat && root._chat.msgs.some((m) => m.r === 'a')) || !sample) return p0.apply(this, arguments);
+    const C = root._chat; if (C.busy) return; C.msgs.push({ r: 'u', t: String(q).trim() }); C.busy = true; pvChatPaint(root);
+    try {
+      const hist = C.msgs.slice(0, -1).filter((m) => m.r !== 's').slice(-10).map((m) => (m.r === 'u' ? 'ESTUDIANTE: ' : 'TUTOR: ') + String(m.t).slice(0, 7000)).join('\n\n');
+      const tot = (root._slots || []).length, cur = pvCur(root);
+      const r = await aiTry(() => sample('Eres el asistente de estudio. El estudiante está viendo un PDF (página actual ' + cur + ' de ' + tot + ') y te pide añadir algo al PDF. Usa el HISTORIAL para saber a qué se refiere («el ejercicio que acabas de hacer», «la explicación del final», «solo la fórmula»…).\nDevuelve SOLO un JSON: {"texto":"…","pagina":número o null,"dentro":true/false,"resumen":"qué has añadido en 6 palabras"}.\n- texto: SOLO la parte que pide, copiada fielmente y completa (con sus pasos, fórmulas y resultado) en Markdown; no añadas comentarios ni lo que no ha pedido. Si pide algo que no está en el historial, redáctalo tú con rigor.\n- pagina: la que diga («en la página 3», «en esta página» = ' + cur + '); si no dice, null.\n- dentro: true solo si pide escribirlo DENTRO de la página del PDF; si no, false (se añade como hoja justo después de la página).\n\nHISTORIAL:\n' + hist + '\n\nPETICIÓN: ' + String(q).trim(), { modelTier: 'default', cache: false }), { label: 'añadir al pdf', tries: 2 });
+      let o = null; try { const t = String(r.text || ''), a = t.indexOf('{'), b = t.lastIndexOf('}'); o = JSON.parse(t.slice(a, b + 1)); } catch (e) {}
+      if (!o || !String(o.texto || '').trim()) throw new Error('vacío');
+      const pg = await pdfAdd(root, o.pagina || cur, String(o.texto).trim(), o.dentro ? 'dentro' : 'hoja');
+      C.msgs.push({ r: 'a', t: 'Añadido ' + (o.dentro && root._mod ? 'dentro de la página ' : 'en una hoja después de la página ') + pg + (o.resumen ? ' · ' + o.resumen : '') + ':\n\n' + String(o.texto).trim(), act: false });
+    } catch (e) { C.msgs.push({ r: 'a', t: 'No he sabido qué parte añadir. Dime exactamente cuál (por ejemplo «añade solo el ejercicio 2 en la página 4») o selecciona el texto en mi respuesta y pulsa «Añadir al PDF».', act: false }); }
+    C.busy = false; pvChatPaint(root);
+  };
+  /* seleccionar un trozo de una respuesta (chat del PDF o Jarvis con un PDF abierto) → botón flotante */
+  let fb = null, fbT = 0;
+  const hideFb = () => { if (fb) { fb.remove(); fb = null; } };
+  function showFb(text, rect) {
+    hideFb(); const root = pvRoot(); if (!root) return;
+    fb = h('div', { class: 'fa-selbtn', role: 'toolbar', 'aria-label': 'Acciones con el texto seleccionado' },
+      h('button', { type: 'button', onmousedown: (e) => e.preventDefault(), onclick: () => { const n = pvCur(root); pvAddSheet(root, n, text); hideFb(); try { getSelection().removeAllRanges(); } catch (e) {} } }, 'Añadir al PDF'),
+      h('button', { type: 'button', onmousedown: (e) => e.preventDefault(), onclick: () => { try { pvToNotes(root, text); } catch (e) {} hideFb(); } }, 'A mis apuntes'));
+    document.body.append(fb);
+    const w = fb.offsetWidth || 220, x = Math.max(8, Math.min(window.innerWidth - w - 8, rect.left + rect.width / 2 - w / 2)), y = rect.top > 60 ? rect.top - 48 : rect.bottom + 8;
+    fb.style.left = x + 'px'; fb.style.top = y + 'px';
+  }
+  document.addEventListener('selectionchange', () => {
+    clearTimeout(fbT); fbT = setTimeout(() => {
+      let sel; try { sel = getSelection(); } catch (e) { return; }
+      if (!sel || sel.isCollapsed || !sel.rangeCount) { hideFb(); return; }
+      const t = String(sel.toString() || '').trim(); if (t.length < 8) { hideFb(); return; }
+      const n = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+      if (!n || !n.closest || !(n.closest('#pdfView .pvc-a') || (pvRoot() && n.closest('#ncOv .nc-bt, #ncOv .nc-msg, .nc-ov .nc-bt')))) { hideFb(); return; }
+      const rect = sel.getRangeAt(0).getBoundingClientRect(); showFb(t, rect);
+    }, 220);
+  });
+  document.addEventListener('scroll', () => hideFb(), true);
+
+  /* =========================================================
+     4) HERRAMIENTAS NUEVAS DE JARVIS
+     ========================================================= */
+  const sch = (p, r) => ({ type: 'object', properties: p, required: r || [] });
+  const tBsh = () => ({ name: 'bloques_sin_hora', description: 'Bloques de estudio SIN HORA: el estudiante los hace cuando pueda y luego los marca como hechos o les pone hora. Úsala cuando pida bloques «sin hora», «para cuando pueda», «sin horario», «x bloques de una asignatura hoy/esta semana» sin decir horas. accion: crear (cantidad, asignatura, temas o tema, duracion_min, fecha AAAA-MM-DD o "cualquiera"), listar, completar (id o tema), programar (id, fecha, inicio HH:MM: lo convierte en un bloque normal del plan) o borrar (id). Aparecen en Inicio → Tu día → «Bloques para cuando puedas».',
+    inputSchema: sch({ accion: { type: 'string', enum: ['crear', 'listar', 'completar', 'programar', 'borrar'] }, asignatura_id: { type: 'string' }, asignatura: { type: 'string' }, cantidad: { type: 'number' }, temas: { type: 'array', items: { type: 'string' } }, tema: { type: 'string' }, duracion_min: { type: 'number' }, fecha: { type: 'string' }, id: { type: 'string' }, inicio: { type: 'string' } }, ['accion']),
+    execute: async (a) => {
+      a = a || {}; await load(); const find = () => B.items.find((x) => x.id === a.id) || (a.tema ? B.items.find((x) => !x.done && norm(x.title).includes(norm(a.tema))) : null) || (a.asignatura || a.asignatura_id ? B.items.find((x) => !x.done && x.sid === subjOf(a)) : null);
+      if (a.accion === 'crear') { const out = create(a); await save(); return 'Creados ' + out.length + ' bloque(s) sin hora' + (out[0].day ? ' para ' + (out[0].day === today() ? 'hoy' : out[0].day) : ' (cualquier día)') + ': ' + out.map((x) => x.title + ' (' + x.mins + ' min)').join('; ') + '. Están en Inicio → Tu día → «Bloques para cuando puedas»: puede marcarlos como hechos o ponerles hora.'; }
+      if (a.accion === 'listar') { const L = B.items.filter((x) => !x.done || x.doneDay === today()); return L.length ? L.map((x) => '[' + x.id + '] ' + x.subject + ' · ' + x.title + ' · ' + x.mins + ' min · ' + (x.day || 'cualquier día') + (x.done ? ' · HECHO' : '')).join('\n') : 'No hay bloques sin hora.'; }
+      const it = find(); if (!it) return 'No encuentro ese bloque sin hora (usa listar para ver los ids).';
+      if (a.accion === 'completar') { await complete(it, true); return 'Marcado como hecho: ' + it.title + '.'; }
+      if (a.accion === 'borrar') { await remove(it); return 'Quitado: ' + it.title + '.'; }
+      if (a.accion === 'programar') return schedule(it, /^\d{4}-\d{2}-\d{2}$/.test(a.fecha || '') ? a.fecha : (it.day || today()), String(a.inicio || '').padStart(5, '0'));
+      return 'Acción no válida.';
+    } });
+  const tPdfRead = () => ({ name: 'leer_pdf_abierto', description: 'Lee el texto del PDF que el estudiante tiene abierto ahora en el visor (por defecto la página actual y las de alrededor). Úsala para responder preguntas sobre ese PDF o explicar una página.', inputSchema: sch({ paginas: { type: 'string', description: '"actual" (por defecto), "todas" o un rango como "3-5"' } }),
+    execute: async (a) => { const root = pvRoot(); if (!root) return 'No hay ningún PDF abierto ahora mismo.'; const pages = await pvText(root, root._it), cur = pvCur(root), N = pages.length; if (!N) return 'No he podido leer el texto de este PDF (puede ser un escaneo sin transcribir).';
+      let a0 = Math.max(1, cur - 1), b0 = Math.min(N, cur + 1); const p = String((a && a.paginas) || 'actual'); if (p === 'todas') { a0 = 1; b0 = N; } else { const m = /^(\d+)(?:\s*-\s*(\d+))?$/.exec(p.trim()); if (m) { a0 = Math.max(1, +m[1]); b0 = Math.min(N, +(m[2] || m[1])); } }
+      let out = '', used = 0; for (let i = a0; i <= b0; i++) { const t = String(pages[i - 1] || ''); if (used + t.length > 30000) { out += '\n[…recortado]'; break; } out += '\n\n[Página ' + i + ']\n' + t; used += t.length; }
+      return '«' + ((root._it || {}).title || (root._it || {}).fileName || 'PDF') + '» (página actual ' + cur + ' de ' + N + '):' + out; } });
+  const tPdfAdd = () => ({ name: 'anadir_al_pdf', description: 'Añade al PDF abierto SOLO la parte que pida el estudiante (por ejemplo «el ejercicio que acabas de resolver», una fórmula, un resumen): pásala en texto (Markdown) tomándola de la conversación. Se añade como hoja justo después de la página indicada (por defecto la actual) sin tocar el original; dentro=true la escribe dentro de la página si el PDF lo permite.', inputSchema: sch({ texto: { type: 'string' }, pagina: { type: 'number' }, dentro: { type: 'boolean' } }, ['texto']),
+    execute: async (a) => { const root = pvRoot(); if (!root) return 'No hay ningún PDF abierto: pide al estudiante que lo abra y vuelva a pedírtelo.'; const t = String((a && a.texto) || '').trim(); if (t.length < 3) throw new Error('falta el texto a añadir'); const n = await pdfAdd(root, a.pagina, t, a.dentro ? 'dentro' : 'hoja'); return 'Añadido al PDF «' + ((root._it || {}).title || 'PDF') + '» en la página ' + n + (a.dentro && root._mod ? ' (dentro de la página)' : ' (hoja justo después, el original queda intacto)') + '.'; } });
+  const NEW = { bloques_sin_hora: tBsh, leer_pdf_abierto: tPdfRead, anadir_al_pdf: tPdfAdd };
+  try { const b0 = window.jvxBase; window.jvxBase = function () { let all = []; try { all = b0(); } catch (e) {} return all.filter((x) => x && !NEW[x.name]).concat(Object.keys(NEW).map((k) => NEW[k]())); }; } catch (e) {}
+  try { if (Array.isArray(JV_CORE_NAMES)) Object.keys(NEW).forEach((n) => { if (!JV_CORE_NAMES.includes(n)) JV_CORE_NAMES.push(n); }); } catch (e) {}
+  try { const c = AG_TOOLCAT.find((x) => x.key === 'estudio') || AG_TOOLCAT[0]; if (c) ['leer_pdf_abierto', 'anadir_al_pdf'].forEach((n) => { if (!c.names.includes(n)) c.names.push(n); }); } catch (e) {}
+  try { const p1 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p1(tl, text, att, BASE); try { const have = new Set(r.map((x) => x && x.name)); const want = ['bloques_sin_hora'].concat(pvRoot() ? ['leer_pdf_abierto', 'anadir_al_pdf'] : []); r = r.concat((tl || []).filter((x) => x && want.includes(x.name) && !have.has(x.name))); } catch (e) {} return r; }; } catch (e) {}
+
+  /* =========================================================
+     5) CONTEXTO DE TODA LA APP + EXPLICACIONES COMO CLAUDE
+     ========================================================= */
+  const VIEW = { inicio: 'Inicio (Tu día)', calendario: 'Calendario', fabrica: 'Fábrica (asignaturas y biblioteca)', asignatura: 'la página de una asignatura', estudio: 'Estudio (temporizador)', agentes: 'Agentes', ajustes: 'Ajustes', recordatorios: 'Recordar' };
+  function ctx() {
+    const L = [];
+    try { L.push('PANTALLA ACTUAL: ' + (VIEW[state.view] || state.view || 'Inicio') + (state.view === 'asignatura' && state.sp && state.subjects[state.sp.id] ? ' · «' + state.subjects[state.sp.id].name + '» (id ' + state.sp.id + ')' : '') + '.'); } catch (e) {}
+    try { const r = pvRoot(); if (r) { const it = r._it || {}; L.push('PDF ABIERTO: «' + (it.title || it.fileName || 'PDF') + '»' + (state.subjects[it.subjectId] ? ' de ' + state.subjects[it.subjectId].name : '') + ', página ' + pvCur(r) + ' de ' + ((r._slots || []).length || '?') + '. Para preguntas sobre él usa leer_pdf_abierto; para añadir algo de la conversación (p. ej. «añade el ejercicio que acabas de hacer en esta página») usa anadir_al_pdf con SOLO esa parte.'); } } catch (e) {}
+    try { const gd = Object.values(state.gd || {}).filter(Boolean); if (gd.length) L.push('DOCUMENTOS GENERADOS: ' + gd.length + ' (súper-apuntes y documentos; para darlos en PDF/Word usa exportar_documento).'); } catch (e) {}
+    try { const bs = (B.items || []).filter((x) => !x.done); if (bs.length) L.push('BLOQUES SIN HORA PENDIENTES: ' + bs.slice(0, 8).map((x) => x.subject + ' · ' + x.title + ' (' + x.mins + ' min, ' + (x.day || 'cualquier día') + ')').join('; ') + '.'); } catch (e) {}
+    return L.join('\n');
+  }
+  try {
+    const j0 = window.jvxHint;
+    window.jvxHint = function () {
+      return String(j0.apply(this, arguments) || '') +
+        '\n\nEXPLICACIONES Y TRABAJO DE FONDO (esto prevalece sobre el límite de 5 líneas): si el estudiante pide explicar, enseñar, resolver un ejercicio, razonar, comparar o escribir algo, responde con la profundidad y calidad de Claude: completo, paso a paso, con fórmulas y ejemplos cuando ayuden, bien estructurado; si es muy largo o para guardar, usa crear_documento. Para preguntas rápidas o de organización, sé breve.' +
+        '\nBLOQUES SIN HORA: si pide bloques sin hora («ponme 3 bloques de Micro para cuando pueda», «sin hora»), usa bloques_sin_hora (accion crear); NO uses anadir_sesion_estudio ni inventes horas. Para ponerles hora después, bloques_sin_hora accion programar.' +
+        '\nMAPA DE LA APP (para guiarle y para la herramienta abrir): Inicio = su día (bloques, exámenes, bloques sin hora); Calendario; Fábrica = asignaturas (dentro: Apuntes, Crear con IA, Plan) y Biblioteca de archivos; Recordar = recordatorios; Estudio = temporizador/pomodoro y estadísticas; Agentes = Tutor, Examinador, Planificador, Investigador y personalizados; Ajustes = IA, copia de seguridad, conexiones. En el visor PDF puede editar (lápiz, subrayar, texto, fotos; se guarda solo) y abrir el chat del PDF.' +
+        (ctx() ? '\n\nCONTEXTO EN ESTE MOMENTO:\n' + ctx() : '');
+    };
+  } catch (e) {}
+  window.__faPlusLib = { load, create, schedule, ctx, pdfAdd };
+})();
+
+</script>
+<script id="fa-jvspec">
+/* Configuración técnica de los recursos con IA: ficha de opciones (extensión, enfoque, cantidad, dificultad…) que se traduce
+   en instrucciones exactas para la IA, y una estética más técnica, minimalista y profesional en «Crear con IA». */
+(function () {
+  'use strict';
+  if (window.__faSpec) return; window.__faSpec = true;
+  const SPEC = {
+    resumen: [
+      ['ext', 'Extensión', [['breve', 'Breve · 1 pág'], ['media', 'Media · 2–3 págs'], ['completa', 'Completa']], 'media'],
+      ['enf', 'Enfoque', [['examen', 'Para el examen'], ['entender', 'Para entender'], ['expres', 'Repaso exprés']], 'examen'],
+      ['inc', 'Incluir', [['def', 'Definiciones'], ['form', 'Fórmulas'], ['ej', 'Ejemplos'], ['tabla', 'Tabla comparativa'], ['preg', 'Preguntas de repaso']], ['def', 'form'], true]
+    ],
+    flashcards: [
+      ['n', 'Cantidad', [['10', '10'], ['20', '20'], ['30', '30'], ['50', '50']], '20'],
+      ['tipo', 'Tipo', [['qa', 'Pregunta–respuesta'], ['def', 'Definiciones'], ['cloze', 'Huecos'], ['mix', 'Mixto']], 'mix'],
+      ['dif', 'Dificultad', [['basica', 'Básica'], ['media', 'Media'], ['examen', 'Nivel examen']], 'media']
+    ],
+    ejercicios: [
+      ['n', 'Cantidad', [['3', '3'], ['5', '5'], ['8', '8'], ['10', '10']], '5'],
+      ['dif', 'Dificultad', [['creciente', 'Creciente'], ['media', 'Media'], ['examen', 'Nivel examen']], 'creciente'],
+      ['sol', 'Solución', [['pasos', 'Paso a paso'], ['res', 'Solo resultado']], 'pasos']
+    ]
+  };
+  const KEY = 'fa-spec-v1'; let S = {};
+  try { S = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) { S = {}; }
+  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  const get = (kind) => { const o = (S[kind] = S[kind] || {}); (SPEC[kind] || []).forEach(([k, , , d, multi]) => { if (o[k] === undefined) o[k] = multi ? d.slice() : d; }); return o; };
+  const label = (kind, k, v) => { const g = (SPEC[kind] || []).find((x) => x[0] === k); const it = g && g[2].find((x) => x[0] === v); return it ? it[1] : v; };
+
+  function compile(kind) {
+    if (!SPEC[kind] || !document.querySelector('.fs-sheet[data-k="' + kind + '"]')) return ''; /* solo cuando se genera desde la ficha visible */
+    const o = get(kind);
+    const L = [];
+    if (kind === 'resumen') {
+      L.push({ breve: 'Extensión: breve, cabe en 1 página (≈400–500 palabras); solo lo esencial.', media: 'Extensión: media, 2–3 páginas (≈900–1300 palabras).', completa: 'Extensión: completa; cubre cada apartado con detalle sin repetir.' }[o.ext]);
+      L.push({ examen: 'Enfoque: para el examen; destaca lo que más se pregunta, definiciones literales y datos clave.', entender: 'Enfoque: para entender; explica el porqué y las relaciones entre conceptos con palabras claras.', expres: 'Enfoque: repaso exprés; frases telegráficas y viñetas, nada de prosa larga.' }[o.enf]);
+      const inc = (o.inc || []).map((v) => ({ def: 'definiciones exactas', form: 'fórmulas (con qué significa cada término)', ej: 'un ejemplo breve por concepto difícil', tabla: 'una tabla comparativa donde haya conceptos parecidos', preg: 'al final 5 preguntas de repaso con su respuesta corta' }[v])).filter(Boolean);
+      if (inc.length) L.push('Incluye: ' + inc.join('; ') + '.');
+    } else if (kind === 'flashcards') {
+      L.push('Crea exactamente ' + o.n + ' flashcards en total, repartidas por todos los temas del material.');
+      L.push({ qa: 'Tipo: pregunta concreta → respuesta corta.', def: 'Tipo: término → definición exacta.', cloze: 'Tipo: frase con hueco (escribe el hueco como ____ en la pregunta y la palabra que falta en la respuesta).', mix: 'Tipo: mezcla de preguntas, definiciones y huecos.' }[o.tipo]);
+      L.push({ basica: 'Dificultad: básica (conceptos fundamentales).', media: 'Dificultad: media.', examen: 'Dificultad: nivel examen (matices, diferencias, cifras y relaciones).' }[o.dif]);
+    } else if (kind === 'test') {
+      L.push('Crea exactamente ' + o.n + ' preguntas tipo test con 4 opciones, repartidas por todos los temas.');
+      L.push({ basica: 'Dificultad: básica.', media: 'Dificultad: media.', examen: 'Dificultad: nivel examen, con distractores muy plausibles.', mixta: 'Dificultad: mezcla de fáciles, medias y difíciles.' }[o.dif]);
+      L.push(o.exp === 'no' ? 'No hace falta explicación (deja "explicacion" vacía).' : 'Cada pregunta con una explicación breve de por qué es correcta.');
+    } else if (kind === 'ejercicios') {
+      L.push('Crea exactamente ' + o.n + ' ejercicios.');
+      L.push({ creciente: 'Dificultad creciente.', media: 'Dificultad media.', examen: 'Todos a nivel examen.' }[o.dif]);
+      L.push(o.sol === 'res' ? 'Solución: solo el resultado final con una línea de justificación.' : 'Solución paso a paso, con el razonamiento y el resultado final destacado.');
+    }
+    return 'Configuración elegida en la ficha: ' + L.filter(Boolean).join(' ');
+  }
+  try {
+    const g0 = window.genAskOf;
+    if (typeof g0 === 'function') window.genAskOf = function (kind) { const a = String(g0.apply(this, arguments) || ''), c = compile(kind); return (c ? c + (a ? '\nAdemás: ' : '') : '') + a; };
+  } catch (e) {}
+
+  /* ---------- ficha de configuración dentro del panel ---------- */
+  function sheet(kind) {
+    const o = get(kind), box = h('section', { class: 'fs-sheet', 'aria-label': 'Configuración del recurso' });
+    const sum = h('p', { class: 'fs-sum', role: 'status' });
+    const paintSum = () => { const parts = (SPEC[kind] || []).map(([k, , , , multi]) => multi ? (o[k] || []).map((v) => label(kind, k, v)).join(' + ') || '—' : label(kind, k, o[k])); sum.textContent = 'ORDEN › ' + ((KINDS[kind] && KINDS[kind].tab) || kind) + ' · ' + parts.join(' · '); };
+    box.append(h('div', { class: 'fs-hd' }, h('span', { class: 'fs-tag', text: 'CONFIGURACIÓN' }), h('span', { class: 'fs-hint', text: 'Lo que elijas aquí se envía a la IA como instrucciones exactas' })));
+    const grid = h('div', { class: 'fs-grid' });
+    (SPEC[kind] || []).forEach(([k, name, opts, , multi]) => {
+      const seg = h('div', { class: 'fs-seg', role: multi ? 'group' : 'radiogroup', 'aria-label': name });
+      const paint = () => seg.querySelectorAll('button').forEach((b) => { const v = b.dataset.v, act = multi ? (o[k] || []).includes(v) : o[k] === v; b.setAttribute(multi ? 'aria-pressed' : 'aria-checked', String(act)); b.classList.toggle('on', act); });
+      opts.forEach(([v, l]) => seg.append(h('button', { type: 'button', role: multi ? undefined : 'radio', 'data-v': v, onclick: () => { if (multi) { const a = new Set(o[k] || []); a.has(v) ? a.delete(v) : a.add(v); o[k] = [...a]; } else o[k] = v; persist(); paint(); paintSum(); } }, l)));
+      paint(); grid.append(h('div', { class: 'fs-row' }, h('span', { class: 'fs-k', text: name }), seg));
+    });
+    box.append(grid, sum); paintSum(); return box;
+  }
+  function inject() {
+    const panel = document.getElementById('panel'); if (!panel) return; const kind = state.tab;
+    const old = panel.querySelector('.fs-sheet'); if (old && old.dataset.k === kind) return; if (old) old.remove();
+    if (!SPEC[kind]) return;
+    const lbl = [...panel.querySelectorAll('label, .lbl, p, b, span')].find((e) => /Pídelo a tu manera/.test(e.textContent || '') && (e.textContent || '').length < 60);
+    const node = sheet(kind); node.dataset.k = kind;
+    if (lbl && lbl.parentNode) lbl.parentNode.insertBefore(node, lbl); else { const btn = [...panel.querySelectorAll('button')].find((b) => /Generar/.test(b.textContent || '')); if (btn && btn.parentNode) btn.parentNode.insertBefore(node, btn); else return; }
+  }
+  let mo = null, t = 0;
+  const watch = () => { const panel = document.getElementById('panel'); if (!panel || panel._fsObs) return; panel._fsObs = new MutationObserver(() => { clearTimeout(t); t = setTimeout(inject, 40); }); panel._fsObs.observe(panel, { childList: true, subtree: false }); inject(); };
+  try { const r0 = window.renderPanel; if (typeof r0 === 'function') window.renderPanel = function () { const r = r0.apply(this, arguments); try { watch(); inject(); } catch (e) {} return r; }; } catch (e) {}
+
+  const css = document.createElement('style'); css.id = 'fa-spec-css';
+  css.textContent = [
+    /* ficha */
+    '.fs-sheet{border:1px solid var(--line,rgba(120,130,150,.25));border-radius:14px;padding:14px 14px 10px;margin:4px 0 14px;background:var(--surface,#fff)}',
+    '.fs-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}.fs-tag{font:700 11px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.12em;color:var(--accent,#2563eb)}.fs-hint{font-size:12px;opacity:.6}',
+    '.fs-grid{display:grid;gap:10px}.fs-row{display:grid;grid-template-columns:120px 1fr;align-items:center;gap:12px}.fs-k{font:600 11.5px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;text-transform:uppercase;opacity:.7}',
+    '.fs-seg{display:flex;flex-wrap:wrap;gap:6px}.fs-seg button{border:1px solid var(--line,rgba(120,130,150,.35));background:transparent;color:inherit;border-radius:8px;padding:7px 11px;font:500 13px/1.1 inherit;font-family:inherit;cursor:pointer;min-height:36px;transition:background .15s,border-color .15s}',
+    '.fs-seg button:hover{border-color:var(--accent,#2563eb)}.fs-seg button.on{background:var(--accent,#2563eb);border-color:var(--accent,#2563eb);color:#fff}.fs-seg button:focus-visible{outline:2px solid var(--accent,#2563eb);outline-offset:2px}',
+    '.fs-sum{margin:12px 0 2px;padding-top:10px;border-top:1px dashed var(--line,rgba(120,130,150,.3));font:500 12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;opacity:.8;overflow-wrap:anywhere}',
+    '@media (max-width:600px){.fs-row{grid-template-columns:1fr;gap:6px}}',
+    /* estética técnica de «Crear con IA» */
+    '#createCard .crg-h{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace!important;text-transform:uppercase;letter-spacing:.08em;font-size:12px!important}',
+    '#createCard .crg-h b,#createCard .crg-h strong{font-size:12px!important;letter-spacing:.08em}',
+    '#createCard .fb-kind{box-shadow:none!important;border:1px solid var(--line,rgba(120,130,150,.22))!important;background:var(--surface,#fff)!important;border-radius:12px!important;transition:border-color .15s,transform .15s}',
+    '#createCard .fb-kind:hover{border-color:var(--accent,#2563eb)!important;transform:translateY(-1px)}',
+    '#createCard .fb-kind[aria-selected=true],#createCard .fb-kind.on,#createCard .fb-kind.active{border-color:var(--accent,#2563eb)!important;box-shadow:inset 0 0 0 1px var(--accent,#2563eb)!important}',
+    '#panel{box-shadow:none!important}#panel textarea{border-radius:10px!important}#panel .btn.primary{border-radius:10px!important;box-shadow:none!important;letter-spacing:.01em}',
+    /* que nada flotante tape: dentro del visor PDF y de ventanas, fuera los botones flotantes globales */
+    'body:has(#pdfView) #qaFab,body:has(#pdfView) .gs-fab{display:none!important}',
+    '@media (max-width:700px){main,#main,.main{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))!important}}',
+    /* cabecera de Jarvis en móvil: título entero, sin subtítulo apretado y botones compactos */
+    '@media (max-width:560px){body .nc-ov .nc-top .nc-tt span{display:none!important}body .nc-ov .nc-top .nc-tt b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}body .nc-ov .nc-top .nc-tt{min-width:0;flex:1}body .nc-ov .nc-top .nc-new{padding:6px 9px!important;font-size:13px!important;flex:none}body .nc-ov .nc-top .nc-mode span{display:none}}'
+  ].join('');
+  document.head.append(css);
+  /* en móvil y tablet, los botones flotantes se apartan al bajar y vuelven al subir: no tapan lo que lees */
+  (function () {
+    let last = 0, tmo = 0;
+    const onScroll = (e) => {
+      if (window.innerWidth > 900) return; const t = e.target === document ? document.scrollingElement : e.target; if (!t || typeof t.scrollTop !== 'number') return;
+      if (t.closest && t.closest('.nc-ov, #pdfView, .modal-bg')) return;
+      const y = t.scrollTop, d = y - (t.__faLast || 0); t.__faLast = y;
+      if (Math.abs(d) < 6) return; document.body.classList.toggle('fa-fabhide', d > 0 && y > 120);
+      clearTimeout(tmo); tmo = setTimeout(() => document.body.classList.remove('fa-fabhide'), 2200);
+    };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    const c2 = document.createElement('style'); c2.textContent = '#qaFab,#ncFab{transition:transform .25s ease,opacity .25s ease}body.fa-fabhide #qaFab{transform:translateY(140%);opacity:0;pointer-events:none}body.fa-fabhide #ncFab{transform:translateY(140%);opacity:0;pointer-events:none}@media (prefers-reduced-motion:reduce){#qaFab,#ncFab{transition:none}}';
+    document.head.append(c2);
+  })();
+  window.__faSpecLib = { compile, get, SPEC };
 })();
 
 </script>
@@ -25865,7 +26252,7 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
   if (typeof s0 === 'function') window.acSection = function (id, a) {
     const sec = s0.apply(this, arguments);
     try {
-      const bar = h('div', { class: 'fh-cur' }, h('span', { class: 'ti', id: 'fhTitle', text: 'Conversación' }), h('button', { type: 'button', 'aria-label': 'Ver conversaciones anteriores', onclick: () => open('ac', id) }, '🕘 Historial'), h('button', { type: 'button', 'aria-label': 'Nueva conversación', onclick: () => newConv('ac', id) }, '＋ Nueva'));
+      const bar = h('div', { class: 'fh-cur' }, h('span', { class: 'ti', id: 'fhTitle', text: 'Conversación' }), h('button', { type: 'button', 'aria-label': 'Ver conversaciones anteriores', onclick: () => open('ac', id) }, 'Historial'), h('button', { type: 'button', 'aria-label': 'Nueva conversación', onclick: () => newConv('ac', id) }, '＋ Nueva'));
       const log = sec.querySelector('#acLog'); if (log && log.parentNode) log.parentNode.insertBefore(bar, log); setTimeout(refreshTitle, 400); setTimeout(refreshTitle, 1500);
     } catch (e) {}
     return sec;
