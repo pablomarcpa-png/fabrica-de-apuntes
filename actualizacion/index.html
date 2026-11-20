@@ -3990,7 +3990,7 @@ async function put0(path, data) {
   catch (e) {
     if (e && e.code === 'quota_exceeded') toast('El almacenamiento está lleno.');
     else if (navigator.onLine === false) { state.offQ = state.offQ || {}; state.offQ[path] = data; offBar(); toast('Sin conexión: guardaré este cambio cuando vuelva internet.'); }
-    else if (window.faSaveFail) window.faSaveFail(path, data, e); else if (window.faSaveFail) window.faSaveFail(path, data, e); else toast('No se pudo guardar el último cambio.');
+    else if (window.faSaveFail) window.faSaveFail(path, data, e); else toast('No se pudo guardar el último cambio.');
   }
 }
 state.offQ = {};
@@ -20332,7 +20332,7 @@ window.ntHubOpen = function (tab) {
   }
   const btn = (t, f, c, d) => h('button', { class: 'btn ' + (c || ''), type: 'button', onclick: f, ...(d ? { disabled: true } : {}) }, t);
 
-  window.gdOpen = function (sid) { G.ui = { sid, step: 'src' }; paint(); };
+  window.gdGenOpen = function (sid) { G.ui = { sid, step: 'src' }; paint(); };
   function paint() { const u = G.ui; if (!u) return; (u.step === 'review' ? vReview : vSrc)(u); }
 
   function vSrc(u) {
@@ -20420,7 +20420,7 @@ window.ntHubOpen = function (tab) {
     return h('div', { class: 'card fb-card', id: 'gdCard' }, fbHead('doc', 'blue', 'Guía docente', g ? 'Importada · ' + (g.temario || []).length + ' temas · ' + (g.evaluacion || []).length + ' criterios de evaluación' : 'Sube la guía en PDF y se cargan solas las fechas, el temario y la evaluación'),
       g && (g.evaluacion || []).length ? h('div', { class: 'gd-tags' }, g.evaluacion.slice(0, 8).map((e) => h('span', { class: 'gd-tag', text: e.concepto + (e.peso ? ' · ' + e.peso : '') }))) : null,
       g && g.criterios ? h('p', { class: 'small', text: g.criterios }) : null,
-      h('div', { class: 'act-row' }, h('button', { class: 'btn primary', type: 'button', style: 'grid-column:1/-1 !important;width:100% !important;max-width:none !important', onclick: () => gdOpen(sid) }, ic('doc'), g ? ' Importar otra guía' : ' Importar guía docente')));
+      h('div', { class: 'act-row' }, h('button', { class: 'btn primary', type: 'button', style: 'grid-column:1/-1 !important;width:100% !important;max-width:none !important', onclick: () => gdGenOpen(sid) }, ic('doc'), g ? ' Importar otra guía' : ' Importar guía docente')));
   };
 })();
 
@@ -24004,7 +24004,7 @@ tkClash = function (day, start, end, skipId) {
   function dismiss(el) { if (!el || el.__gone) return; el.__gone = true; el.classList.add('out'); setTimeout(() => { try { el.remove(); } catch (e) {} }, 260); }
   function notify(o) {
     o = typeof o === 'string' ? { msg: o } : (o || {}); const kind = o.kind || kindOf(o.msg), h = host();
-    if (!o.noDedupe) { const dup = Array.from(h.children).find((e) => e.__key === (o.key || (kind + '|' + (o.title || '') + '|' + o.msg))); if (dup) { dup.__bump && dup.__bump(); return dup; } }
+    if (!o.noDedupe) { const dup = Array.from(h.children).find((e) => !e.__gone && e.__key === (o.key || (kind + '|' + (o.title || '') + '|' + o.msg))); if (dup) { dup.__bump && dup.__bump(); return dup; } }
     const el = document.createElement('div'); el.className = 'fa-nt k-' + kind; el.setAttribute('role', kind === 'error' ? 'alert' : 'status'); el.__key = o.key || (kind + '|' + (o.title || '') + '|' + o.msg);
     const ic = document.createElement('div'); ic.className = 'fa-nt-i'; ic.textContent = o.icon || ICON[kind] || 'i'; ic.setAttribute('aria-hidden', 'true');
     const b = document.createElement('div'); b.className = 'fa-nt-b'; const tt = o.title || (o.msg && kind !== 'info' && String(o.msg).length > 70 ? TITLE[kind] : ''); if (tt) { const t = document.createElement('p'); t.className = 'fa-nt-t'; t.textContent = tt; b.append(t); }
@@ -24016,7 +24016,7 @@ tkClash = function (day, start, end, skipId) {
     let timer = null; const arm = (t) => { clearTimeout(timer); if (!ms) return; let p = el.querySelector('.fa-nt-p'); if (p) p.remove(); p = document.createElement('i'); p.className = 'fa-nt-p'; p.style.animationDuration = t + 'ms'; el.append(p); timer = setTimeout(() => dismiss(el), t); };
     el.__bump = () => arm(ms); el.onmouseenter = () => { clearTimeout(timer); const p = el.querySelector('.fa-nt-p'); if (p) p.style.animationPlayState = 'paused'; }; el.onmouseleave = () => arm(2500);
     el.onclick = (e) => { if (e.target === el && !acts.length) dismiss(el); };
-    h.prepend(el); Array.from(h.children).filter((x) => !x.__gone).slice(3).forEach((x) => dismiss(x)); arm(ms); el.update = (m2) => { const n = el.querySelector('.fa-nt-m,.fa-nt-t:last-of-type'); if (n) n.textContent = m2; }; el.close = () => dismiss(el); return el;
+    h.prepend(el); Array.from(h.children).filter((e) => !e.__gone).slice(3).forEach(dismiss); arm(ms); el.update = (m2) => { const n = el.querySelector('.fa-nt-m,.fa-nt-t:last-of-type'); if (n) n.textContent = m2; }; el.close = () => dismiss(el); return el;
   }
   window.faNotify = notify;
   window.toast = function (msg, act) {
@@ -25101,8 +25101,8 @@ Todas admiten "fuente" (de dónde salen los datos) y "notas" (guion del orador, 
   }
   /* ---------- exportar ---------- */
   async function saveBytes(name, u8) { let dl = null; try { dl = await claude.use('downloads'); } catch (e) {} if (!dl) throw new Error('La descarga no está disponible en esta vista. Ábrela desde Claude.'); try { await dl.save({ filename: name, data: u8 }); return true; } catch (e) { if (e && e.code === 'declined') return false; throw e; } }
-  async function exportAs(fmt) {
-    const d = Z.deck, base = (d.title || 'presentacion').replace(/[^\w\- áéíóúñÁÉÍÓÚÑ]/g, '').trim().slice(0, 60) || 'presentacion'; const n = window.faNotify({ kind: 'info', title: 'Preparando ' + (fmt === 'pdf' ? 'el PDF' : 'el PowerPoint') + '…', msg: 'Un momento', sticky: true, key: 'dk-exp' });
+  async function exportAs(fmt, dd) {
+    const d = dd || Z.deck, base = (d.title || 'presentacion').replace(/[^\w\- áéíóúñÁÉÍÓÚÑ]/g, '').trim().slice(0, 60) || 'presentacion'; const n = window.faNotify({ kind: 'info', title: 'Preparando ' + (fmt === 'pdf' ? 'el PDF' : 'el PowerPoint') + '…', msg: 'Un momento', sticky: true, key: 'dk-exp' });
     try {
       let u8; if (fmt === 'pdf') u8 = await E.buildPdf(d, IM, (i, t) => { try { n.update('Página ' + i + ' de ' + t); } catch (e) {} }); else { const p = await E.buildPptx(d, IM); u8 = new Uint8Array(await p.write({ outputType: 'arraybuffer' })); }
       try { n.close(); } catch (e) {} const ok = await saveBytes(base + (fmt === 'pdf' ? '.pdf' : '.pptx'), u8); if (ok) window.faNotify({ kind: 'ok', title: 'Descargado', msg: base + (fmt === 'pdf' ? '.pdf' : '.pptx') });
@@ -25151,7 +25151,50 @@ Todas admiten "fuente" (de dónde salen los datos) y "notas" (guion del orador, 
     await loadImgsFrom(v.images); const imgIds = {}; (v.images || []).forEach((m) => { imgIds[m.id] = 1; });
     Z.deck = { id, sid: v.subjectId || sid || '', title: v.title, slides: v.slides, theme: v.theme || { key: 'ejecutivo' }, fmt: v.fmt || 'pptx', imgIds, outline: v.outline || [], createdAt: v.createdAt }; Z.sid = Z.deck.sid; Z.chat = (v.messages || []).map((m) => ({ r: m.r, t: m.t })); Z.cur = 0; Z.edit = false; Z.style = false; Z.asOpen = false; Z.mat = null; Z.from = sid ? 'list' : ''; document.addEventListener('keydown', onKey, true); paintView();
   }
-  window.dkStudio = { open, openDeck, engine: E, state: Z, IM };
+  /* ---------- modo directo (Jarvis): crea la presentación completa sin pasar por el asistente ---------- */
+  async function saveObj(d) {
+    const imgs = [];
+    for (const id of Object.keys(d.imgIds || {})) { const im = IM[id]; if (!im) continue; if (!im.url && typeof assets !== 'undefined' && assets && im.blob) { try { const r = await assets.upload(im.blob); im.url = r.url; } catch (e) {} } imgs.push({ id, name: im.name, w: im.w, h: im.h, ...(im.url ? { url: im.url } : { data: im.data && im.data.length < 220000 ? im.data : '' }) }); }
+    const doc = { subjectId: d.sid || '', subjectName: (state.subjects[d.sid] || {}).name || '', title: d.title, mode: 'studio', status: 'ready', slides: d.slides, theme: d.theme, fmt: d.fmt || 'pptx', images: imgs, outline: d.outline || [], messages: [], slideCount: d.slides.length, version: 1, createdAt: d.createdAt || Date.now(), updatedAt: Date.now(), req: null, previews: [], via: 'jarvis' };
+    await put('decks/' + d.id, doc); return doc;
+  }
+  async function quick(o) {
+    o = o || {}; const c = newCfg({ sid: o.sid || '', topic: String(o.topic || '') }), say = o.onProg || (() => {});
+    if (o.title) c.title = String(o.title).slice(0, 120);
+    if (o.n > 0) c.n = Math.max(3, Math.min(40, Math.round(o.n))); else if (o.minutes > 0) c.n = 0;
+    if (o.minutes > 0) c.minutes = Math.max(2, Math.min(90, Math.round(o.minutes)));
+    if (PURP.some((p) => p[0] === o.purpose)) c.purpose = o.purpose;
+    if (o.audience) c.aud = String(o.audience).slice(0, 200);
+    if (E.THEMES[o.theme]) c.theme = o.theme;
+    if (o.primary && /^#[0-9a-f]{6}$/i.test(o.primary)) { c.theme = 'custom'; c.primary = o.primary; if (/^#[0-9a-f]{6}$/i.test(o.accent || '')) c.accent = o.accent; }
+    if (['poca', 'media', 'mucha'].includes(o.density)) c.density = o.density;
+    if (['no', 'pocos', 'auto', 'muchos'].includes(o.charts)) c.charts = o.charts;
+    if (o.lang) c.lang = String(o.lang).slice(0, 30);
+    if (typeof o.notes === 'boolean') c.notes = o.notes;
+    if (typeof o.onlyData === 'boolean') c.onlyData = o.onlyData;
+    c.source = o.useNotes && c.sid ? 'notes' : 'text'; c.text = String(o.text || '').slice(0, 120000); c.free = String(o.extra || '').slice(0, 2000);
+    c.files = (o.docs || []).filter((d) => d && String(d.text || '').trim().length > 15).map((d) => ({ kind: 'doc', name: String(d.name || 'archivo'), text: String(d.text).slice(0, 150000) }));
+    const loc = {};
+    for (let k = 0; k < (o.photos || []).length && k < 12; k++) { const b = o.photos[k]; try { const f = b instanceof File ? b : new File([b], 'foto' + (k + 1) + '.jpg', { type: (b && b.type) || 'image/jpeg' }); const r = await readImg(f, 1600), id = 'img' + uid().slice(0, 7); IM[id] = loc[id] = { name: f.name || 'Foto ' + (k + 1), ...r }; c.files.push({ kind: 'img', id, name: IM[id].name }); } catch (e) {} }
+    if (!c.topic.trim() && !c.text.trim() && !c.files.length && c.source !== 'notes') throw new Error('falta el tema o el material de la presentación');
+    say(0.04, 'Leyendo el material…'); const mat = await material(c, () => {});
+    say(0.1, 'Diseñando el índice…'); const ol = await aiOutline(c, mat, o.signal);
+    if (c.n && ol.items.length > c.n + 2) ol.items = ol.items.slice(0, c.n);
+    const slides = await aiSlides(c, ol.title, ol.items, mat, (i, n, t) => say(0.16 + 0.78 * i / Math.max(1, n), t ? 'Diapositiva ' + (i + 1) + ' de ' + n + ' · ' + t : 'Rematando…'), o.signal);
+    Object.keys(loc).forEach((k) => { IM[k] = loc[k]; });
+    if (slides[0] && slides[0].layout === 'portada') { if (!slides[0].title) slides[0].title = ol.title; if (!slides[0].subtitle && ol.subtitle) slides[0].subtitle = ol.subtitle; if (!slides[0].kicker && c.sid && state.subjects[c.sid]) slides[0].kicker = state.subjects[c.sid].name; }
+    const imgIds = {}; slides.forEach((s) => { if (s.imagen && IM[s.imagen]) imgIds[s.imagen] = 1; }); Object.keys(loc).forEach((k) => { imgIds[k] = 1; });
+    const d = { id: o.id || uid(), sid: c.sid, title: ol.title, slides, theme: { key: c.theme, primary: c.primary, accent: c.accent, font: c.font, cover: c.cover }, fmt: o.fmt === 'pdf' ? 'pdf' : 'pptx', imgIds, outline: ol.items, createdAt: Date.now() };
+    say(0.97, 'Guardando…'); await saveObj(d); say(1, 'Lista'); return d;
+  }
+  async function loadDeck(id) {
+    let v = null; try { const s = await db.doc('decks/' + id).get(); v = s && typeof s.data === 'function' ? s.data() : null; } catch (e) {}
+    if (!v || !Array.isArray(v.slides) || !v.slides.length) return null; await loadImgsFrom(v.images);
+    return { id, sid: v.subjectId || '', title: v.title, slides: v.slides, theme: v.theme || { key: 'ejecutivo' }, fmt: v.fmt || 'pptx' };
+  }
+  async function thumb(id, cv, w, i) { const d = await loadDeck(id); if (!d) return null; const k = Math.max(0, Math.min(d.slides.length - 1, i || 0)); await E.renderTo(cv, E.sceneOf(d.slides[k], k, d.slides.length, d, IM), w || 640); return d; }
+  async function exportDeck(id, fmt) { const d = await loadDeck(id); if (!d) { window.toast('No he encontrado esa presentación.'); return; } return exportAs(fmt === 'pdf' ? 'pdf' : 'pptx', d); }
+  window.dkStudio = { open, openDeck, quick, loadDeck, thumb, exportDeck, engine: E, state: Z, IM };
   /* ---------- Jarvis ---------- */
   const NAMES = ['crear_presentacion'];
   const sch2 = (p, r) => ({ type: 'object', properties: p, required: r || [] });
@@ -25214,7 +25257,7 @@ Todas admiten "fuente" (de dónde salen los datos) y "notas" (guion del orador, 
   const tool = () => ({ name: 'crear_grafica', description: 'Crea una gráfica (barras, barras_h, lineas, circular, apiladas) con datos reales y se la ENSEÑA al estudiante al instante en el chat, con botones para copiarla como imagen y descargarla. Úsala cuando pida un gráfico, diagrama de barras, tarta, evolución, comparativa o visualizar datos (de sus apuntes, un ejercicio o los que él te dé). Pon un título claro, la unidad si la hay y usa SOLO datos reales o dados por el estudiante; no inventes cifras. Máximo 12 etiquetas y 5 series. circular admite una sola serie.',
     inputSchema: { type: 'object', properties: { titulo: { type: 'string' }, tipo: { type: 'string', enum: TIPOS }, unidad: { type: 'string', description: 'p. ej. €, %, M€' }, etiquetas: { type: 'array', items: { type: 'string' } }, series: { type: 'array', items: { type: 'object', properties: { nombre: { type: 'string' }, valores: { type: 'array', items: { type: 'number' } } }, required: ['nombre', 'valores'] } }, fuente: { type: 'string', description: 'origen de los datos si se conoce' }, tema: { type: 'string', enum: ['ejecutivo', 'editorial', 'oceano'] } }, required: ['titulo', 'etiquetas', 'series'] },
     execute: async (a) => { a = a || {}; const g = clean(a); const c = { k: 'chart', title: g.titulo || 'Gráfica', grafico: g, fuente: String(a.fuente || '').slice(0, 120), tema: ['ejecutivo', 'editorial', 'oceano'].includes(a.tema) ? a.tema : 'ejecutivo', at: Date.now() };
-      await toCanvas(c, 400); mine.push(c); setTimeout(() => { const i = mine.indexOf(c); if (i >= 0) { mine.splice(i, 1); try { overlay(c); } catch (e) {} } }, 1800);
+      await toCanvas(c, 400); if (typeof state !== 'undefined' && state.nc && state.nc.busy) mine.push(c); else { try { overlay(c); } catch (e) { mine.push(c); } }
       return 'Gráfica «' + g.titulo + '» creada y mostrada al estudiante (' + g.tipo + ', ' + g.etiquetas.length + ' valores) con botones para copiar y descargar. No describas cada barra: comenta en 1–2 frases lo más relevante.'; } });
   try { const t0 = window.jvCardsTake; window.jvCardsTake = function (bot) { try { t0 && t0(bot); } catch (e) {} if (mine.length && bot) bot.cards = (bot.cards || []).concat(mine.splice(0)).slice(0, 6); }; } catch (e) {}
   try { const r0 = window.jvCardsReset; window.jvCardsReset = function () { try { r0 && r0(); } catch (e) {} }; } catch (e) {}
@@ -25224,6 +25267,403 @@ Todas admiten "fuente" (de dónde salen los datos) y "notas" (guion del orador, 
   try { if (Array.isArray(JV_CORE_NAMES)) NAMES.forEach((n) => { if (!JV_CORE_NAMES.includes(n)) JV_CORE_NAMES.push(n); }); } catch (e) {}
   try { const p0 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p0(tl, text, att, BASE); try { if (/grafic|grafico|diagrama|barras|tarta|circular|lineas|evolucion|visualiz/.test(String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()) && Array.isArray(r) && !r.some((x) => x && x.name === 'crear_grafica')) { const t = (tl || []).find((x) => x && x.name === 'crear_grafica'); if (t) r = r.concat([t]); } } catch (e) {} return r; }; } catch (e) {}
   try { const j0 = window.jvxHint; if (typeof j0 === 'function') window.jvxHint = function () { return String(j0.apply(this, arguments) || '') + '\nSi el estudiante pide una gráfica o conviene visualizar datos, usa crear_grafica (se ve al instante y se puede copiar).'; }; } catch (e) {}
+})();
+
+</script>
+<script id="fa-jvmax">
+/* Jarvis al máximo: documentos (PDF/Word), presentaciones directas, hojas de cálculo (Excel/CSV) y archivos de cualquier tipo */
+(function () {
+  'use strict';
+  if (window.__jvMax) return; window.__jvMax = true;
+  const J = () => (typeof state !== 'undefined' && state.jvx) || {};
+  const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const arr = (x) => (Array.isArray(x) ? x : []);
+  const uidx = () => (typeof uid === 'function' ? uid() : Math.random().toString(36).slice(2, 10));
+  const esc = (s) => String(s == null ? '' : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const enc = new TextEncoder();
+  const JOBS = (window.__jvJobs = window.__jvJobs || {});
+  const mine = [];
+  const KINDS = {};
+  const note = (o) => { try { return window.faNotify(o); } catch (e) { try { window.toast(o.title + (o.msg ? ': ' + o.msg : ''), o.kind === 'error' ? undefined : 'ok'); } catch (x) {} } };
+  const errTxt = (e) => (e && e.code === 'cancelled' ? 'Cancelado.' : typeof aiErr === 'function' ? aiErr(e) : String((e && (e.message || e.code)) || 'Error inesperado'));
+  const fname = (t, ext) => (String(t || 'documento').normalize('NFC').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'documento') + '.' + ext;
+  const kb = (n) => (typeof lfSize === 'function' ? lfSize(n) : Math.max(1, Math.round(n / 1024)) + ' KB');
+
+  /* ---------- descarga y portapapeles ---------- */
+  async function save(name, data) {
+    let dl = null; try { dl = await claude.use('downloads'); } catch (e) {}
+    const u8 = typeof data === 'string' ? enc.encode(data) : data;
+    if (dl) { try { await dl.save({ filename: name, data: u8 }); note({ kind: 'ok', title: 'Descargado', msg: name, ms: 4000 }); return true; } catch (e) { if (e && e.code === 'declined') return false; } }
+    try { const u = URL.createObjectURL(new Blob([u8])), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); return true; } catch (e) {}
+    note({ kind: 'error', title: 'No he podido descargarlo', msg: 'La descarga no está disponible en esta vista.' }); return false;
+  }
+  async function copy(text, what) {
+    try { await navigator.clipboard.writeText(text); note({ kind: 'ok', title: (what || 'Texto') + ' copiado', msg: 'Ya puedes pegarlo donde quieras.', ms: 3500 }); }
+    catch (e) { const t = document.createElement('textarea'); t.value = text; t.style.cssText = 'position:fixed;opacity:0'; document.body.append(t); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (x) {} t.remove(); note(ok ? { kind: 'ok', title: (what || 'Texto') + ' copiado', ms: 3500 } : { kind: 'error', title: 'No he podido copiar', msg: 'Tu navegador no deja acceder al portapapeles.' }); }
+  }
+
+  /* ---------- ZIP (sin compresión) para .docx y .xlsx ---------- */
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (u) => { let c = 0xffffffff; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  function zip(files) {
+    const parts = [], cen = []; let off = 0;
+    for (const f of files) {
+      const nm = enc.encode(f.name), d = typeof f.data === 'string' ? enc.encode(f.data) : f.data, cr = crc32(d);
+      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true); lh.setUint16(10, 0, true); lh.setUint16(12, 0x21, true); lh.setUint32(14, cr, true); lh.setUint32(18, d.length, true); lh.setUint32(22, d.length, true); lh.setUint16(26, nm.length, true); lh.setUint16(28, 0, true);
+      parts.push(new Uint8Array(lh.buffer), nm, d);
+      const ch = new DataView(new ArrayBuffer(46)); ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true); ch.setUint16(12, 0, true); ch.setUint16(14, 0x21, true); ch.setUint32(16, cr, true); ch.setUint32(20, d.length, true); ch.setUint32(24, d.length, true); ch.setUint16(28, nm.length, true); ch.setUint32(42, off, true);
+      cen.push(new Uint8Array(ch.buffer), nm); off += 30 + nm.length + d.length;
+    }
+    const csz = cen.reduce((n, x) => n + x.length, 0), e = new DataView(new ArrayBuffer(22)); e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csz, true); e.setUint32(16, off, true);
+    const all = parts.concat(cen, [new Uint8Array(e.buffer)]), out = new Uint8Array(all.reduce((n, x) => n + x.length, 0)); let p = 0; all.forEach((x) => { out.set(x, p); p += x.length; }); return out;
+  }
+
+  /* ---------- gráfico (bloque ```grafico) a PNG para Word ---------- */
+  async function chartPng(spec) {
+    if (typeof gcEl !== 'function') return null;
+    const fig = gcEl(spec), svg = fig.querySelector('svg'); if (!svg) return null;
+    const vb = (svg.getAttribute('viewBox') || '0 0 640 360').split(/\s+/).map(Number), W = vb[2] || 640, H = vb[3] || 360;
+    svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg'); svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('style', 'color:#1f2937;font-family:Helvetica,Arial,sans-serif');
+    const src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+    const img = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = src; });
+    const k = 2, c = document.createElement('canvas'); c.width = W * k; c.height = H * k; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+    const b = await new Promise((ok) => c.toBlob(ok, 'image/png')); if (!b) return null; return { data: new Uint8Array(await b.arrayBuffer()), w: W, h: H };
+  }
+
+  /* ---------- Markdown → Word (.docx) ---------- */
+  async function mdToDocx(title, sub, md) {
+    const B = typeof gdParse === 'function' ? gdParse(md) : String(md || '').split(/\n{2,}/).map((t) => ({ t: 'p', runs: [{ s: t }] }));
+    const media = []; let did = 1;
+    const run = (r, extra) => { const s = String(r.s == null ? '' : r.s); if (!s) return ''; const pr = (r.b ? '<w:b/>' : '') + (r.i ? '<w:i/>' : '') + (r.c ? '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/><w:shd w:val="clear" w:color="auto" w:fill="F1F3F5"/>' : '') + (extra || ''); return '<w:r>' + (pr ? '<w:rPr>' + pr + '</w:rPr>' : '') + '<w:t xml:space="preserve">' + esc(s) + '</w:t></w:r>'; };
+    const runs = (rs, extra) => arr(rs).map((r) => run(r, extra)).join('');
+    const P = (inner, ppr) => '<w:p>' + (ppr ? '<w:pPr>' + ppr + '</w:pPr>' : '') + inner + '</w:p>';
+    let body = P(run({ s: title }), '<w:pStyle w:val="Title"/>');
+    arr(sub).filter(Boolean).forEach((s) => { body += P(run({ s }), '<w:pStyle w:val="Subtitle"/>'); });
+    const h1 = B.some((x) => x.t === 'h' && x.l === 1) ? 0 : 1;
+    for (const b of B) {
+      if (b.t === 'h') body += P(runs(b.runs), '<w:pStyle w:val="Heading' + Math.min(3, Math.max(1, b.l - h1)) + '"/>');
+      else if (b.t === 'p') body += P(runs(b.runs));
+      else if (b.t === 'li') body += b.ord ? P(run({ s: b.ord + '. ' }) + runs(b.runs), '<w:ind w:left="' + (360 + b.lv * 360) + '" w:hanging="300"/><w:spacing w:after="60"/>') : P(runs(b.runs), '<w:pStyle w:val="ListParagraph"/><w:numPr><w:ilvl w:val="' + Math.min(2, b.lv) + '"/><w:numId w:val="1"/></w:numPr><w:spacing w:after="60"/>');
+      else if (b.t === 'quote') body += P(runs(b.runs, '<w:i/>'), '<w:pBdr><w:left w:val="single" w:sz="18" w:space="8" w:color="9AA5B1"/></w:pBdr><w:ind w:left="360"/>');
+      else if (b.t === 'code') body += arr(b.lines).map((l) => P(run({ s: l || ' ', c: true }), '<w:spacing w:after="0"/><w:shd w:val="clear" w:color="auto" w:fill="F1F3F5"/>')).join('');
+      else if (b.t === 'hr') body += P('', '<w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="C8CDD3"/></w:pBdr>');
+      else if (b.t === 'table') {
+        const n = Math.max(1, ...b.rows.map((r) => r.length)), w = Math.floor(9000 / n);
+        body += '<w:tbl><w:tblPr><w:tblStyle w:val="TablaFA"/><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="C8CDD3"/><w:left w:val="single" w:sz="4" w:color="C8CDD3"/><w:bottom w:val="single" w:sz="4" w:color="C8CDD3"/><w:right w:val="single" w:sz="4" w:color="C8CDD3"/><w:insideH w:val="single" w:sz="4" w:color="C8CDD3"/><w:insideV w:val="single" w:sz="4" w:color="C8CDD3"/></w:tblBorders><w:tblCellMar><w:left w:w="100" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>' + Array(n).fill('<w:gridCol w:w="' + w + '"/>').join('') + '</w:tblGrid>';
+        b.rows.forEach((r, ri) => { body += '<w:tr>' + (ri ? '' : '<w:trPr><w:tblHeader/></w:trPr>') + r.map((c) => '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/>' + (ri ? '' : '<w:shd w:val="clear" w:color="auto" w:fill="1F3A5F"/>') + '</w:tcPr>' + P(runs(c, ri ? '' : '<w:b/><w:color w:val="FFFFFF"/>'), '<w:spacing w:before="40" w:after="40"/>') + '</w:tc>').join('') + '</w:tr>'; });
+        body += '</w:tbl>' + P('');
+      } else if (b.t === 'chart') {
+        let png = null; try { png = await chartPng(b.spec); } catch (e) {}
+        if (png) {
+          const id = did++, rid = 'rIdImg' + id, cx = 5760000, cy = Math.round(cx * png.h / png.w); media.push({ name: 'word/media/grafico' + id + '.png', data: png.data, rid, target: 'media/grafico' + id + '.png' });
+          body += P('<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:docPr id="' + id + '" name="Gráfico ' + id + '"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + id + '" name="grafico' + id + '.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>', '<w:jc w:val="center"/>');
+        } else if (b.spec) body += P(run({ s: '[Gráfico: ' + (b.spec.title || '') + ']', i: true }));
+      }
+    }
+    const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
+    const doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + NS + '><w:body>' + body + '<w:sectPr><w:footerReference w:type="default" r:id="rIdFt"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1418" w:right="1304" w:bottom="1418" w:left="1304" w:header="709" w:footer="709" w:gutter="0"/></w:sectPr></w:body></w:document>';
+    const font = '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/>';
+    const hs = (id, name, sz, col, before, extra) => '<w:style w:type="paragraph" w:styleId="' + id + '"><w:name w:val="' + name + '"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="' + before + '" w:after="120"/>' + (extra || '') + '</w:pPr><w:rPr><w:b/><w:color w:val="' + col + '"/><w:sz w:val="' + sz + '"/><w:szCs w:val="' + sz + '"/></w:rPr></w:style>';
+    const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr>' + font + '<w:sz w:val="22"/><w:szCs w:val="22"/><w:lang w:val="es-ES"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="140" w:line="288" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
+      + '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:color w:val="1F2933"/></w:rPr></w:style>'
+      + '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="80"/><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="C9962B"/></w:pBdr></w:pPr><w:rPr><w:b/><w:color w:val="13233F"/><w:sz w:val="48"/><w:szCs w:val="48"/></w:rPr></w:style>'
+      + '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="60"/></w:pPr><w:rPr><w:color w:val="6B7785"/><w:sz w:val="22"/></w:rPr></w:style>'
+      + hs('Heading1', 'heading 1', 32, '13233F', 360, '<w:outlineLvl w:val="0"/>') + hs('Heading2', 'heading 2', 27, '1F3A5F', 280, '<w:outlineLvl w:val="1"/>') + hs('Heading3', 'heading 3', 24, '2F5D8A', 220, '<w:outlineLvl w:val="2"/>')
+      + '<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:ind w:left="720"/></w:pPr></w:style>'
+      + '<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="footer"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="8A95A3"/><w:sz w:val="18"/></w:rPr></w:style>'
+      + '<w:style w:type="table" w:styleId="TablaFA"><w:name w:val="Tabla FA"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/></w:tblPr></w:style></w:styles>';
+    const lvl = (i, ch) => '<w:lvl w:ilvl="' + i + '"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="' + ch + '"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="' + (720 + i * 360) + '" w:hanging="360"/></w:pPr><w:rPr><w:color w:val="C9962B"/></w:rPr></w:lvl>';
+    const numbering = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="hybridMultilevel"/>' + lvl(0, '•') + lvl(1, '–') + lvl(2, '·') + '</w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+    const footer = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:pPr><w:pStyle w:val="Footer"/><w:jc w:val="center"/></w:pPr><w:r><w:t xml:space="preserve">' + esc(String(title).slice(0, 70)) + ' · </w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>1</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>';
+    const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdSt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdNu" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/><Relationship Id="rIdFt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' + media.map((m) => '<Relationship Id="' + m.rid + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="' + m.target + '"/>').join('') + '</Relationships>';
+    const ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>';
+    const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    const core = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>' + esc(title) + '</dc:title><dc:creator>Fábrica de Apuntes</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">' + now + '</dcterms:created></cp:coreProperties>';
+    const root = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>';
+    return zip([{ name: '[Content_Types].xml', data: ct }, { name: '_rels/.rels', data: root }, { name: 'docProps/core.xml', data: core }, { name: 'word/document.xml', data: doc }, { name: 'word/styles.xml', data: styles }, { name: 'word/numbering.xml', data: numbering }, { name: 'word/footer1.xml', data: footer }, { name: 'word/_rels/document.xml.rels', data: rels }].concat(media.map((m) => ({ name: m.name, data: m.data }))));
+  }
+
+  /* ---------- hojas de cálculo (.xlsx / .csv) ---------- */
+  const colL = (i) => { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const isNum = (v) => typeof v === 'number' ? isFinite(v) : (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v.trim()) && v.trim().length < 16);
+  function cleanSheets(hojas) {
+    const used = new Set();
+    return arr(hojas).slice(0, 12).map((h0, k) => {
+      let nm = String((h0 && h0.nombre) || 'Hoja ' + (k + 1)).replace(/[\[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Hoja ' + (k + 1); while (used.has(nm.toLowerCase())) nm = nm.slice(0, 28) + ' ' + (k + 1); used.add(nm.toLowerCase());
+      const cols = arr(h0 && h0.columnas).map((c) => String(c == null ? '' : c).slice(0, 120)).slice(0, 60);
+      const rows = arr(h0 && h0.filas).slice(0, 5000).map((r) => arr(r).slice(0, 60).map((v) => (v == null ? '' : typeof v === 'number' || typeof v === 'boolean' ? v : String(v).slice(0, 2000))));
+      return { nombre: nm, columnas: cols, filas: rows, notas: String((h0 && h0.notas) || '').slice(0, 300) };
+    }).filter((s) => s.columnas.length || s.filas.length);
+  }
+  function xlsx(title, sheets) {
+    const sx = (s, ri, ci) => {
+      const ref = colL(ci) + (ri + 1);
+      if (s === '' || s == null) return '';
+      if (typeof s === 'boolean') return '<c r="' + ref + '" t="b"><v>' + (s ? 1 : 0) + '</v></c>';
+      if (typeof s === 'string' && s.startsWith('=') && s.length > 1) return '<c r="' + ref + '"' + (ri ? '' : ' s="1"') + '><f>' + esc(s.slice(1)) + '</f></c>';
+      if (isNum(s)) return '<c r="' + ref + '"' + (ri ? ' s="2"' : ' s="1"') + '><v>' + Number(s) + '</v></c>';
+      return '<c r="' + ref + '" t="inlineStr"' + (ri ? ' s="3"' : ' s="1"') + '><is><t xml:space="preserve">' + esc(s) + '</t></is></c>';
+    };
+    const files = [];
+    sheets.forEach((sh, k) => {
+      const all = (sh.columnas.length ? [sh.columnas] : []).concat(sh.filas), nc = Math.max(1, ...all.map((r) => r.length));
+      const wid = Array.from({ length: nc }, (_, c) => Math.min(60, Math.max(8, ...all.slice(0, 300).map((r) => String(r[c] == null ? '' : r[c]).startsWith('=') ? 12 : String(r[c] == null ? '' : r[c]).length + 2))));
+      const rowsX = all.map((r, ri) => '<row r="' + (ri + 1) + '">' + r.map((v, ci) => sx(v, ri, ci)).join('') + '</row>').join('');
+      const hasH = !!sh.columnas.length, last = colL(nc - 1) + Math.max(1, all.length);
+      files.push({ name: 'xl/worksheets/sheet' + (k + 1) + '.xml', data: '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><dimension ref="A1:' + last + '"/><sheetViews><sheetView workbookViewId="0"' + (k ? '' : ' tabSelected="1"') + '>' + (hasH ? '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>' : '') + '</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>' + wid.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols><sheetData>' + rowsX + '</sheetData>' + (hasH && all.length > 1 ? '<autoFilter ref="A1:' + last + '"/>' : '') + '</worksheet>' });
+    });
+    const wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' + sheets.map((s, k) => '<sheet name="' + esc(s.nombre) + '" sheetId="' + (k + 1) + '" r:id="rId' + (k + 1) + '"/>').join('') + '</sheets>' + sheets.map((s, k) => (s.columnas.length && (s.filas.length) ? '<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="' + k + '" hidden="1">\'' + esc(s.nombre.replace(/'/g, "''")) + '\'!$A$1:$' + colL(Math.max(1, s.columnas.length) - 1) + '$' + (s.filas.length + 1) + '</definedName></definedNames>' : '')).filter(Boolean).slice(0, 1).join('') + '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>';
+    const wbr = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + sheets.map((s, k) => '<Relationship Id="rId' + (k + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (k + 1) + '.xml"/>').join('') + '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>';
+    const st = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.##"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F3A5F"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD5DAE0"/></left><right style="thin"><color rgb="FFD5DAE0"/></right><top style="thin"><color rgb="FFD5DAE0"/></top><bottom style="thin"><color rgb="FFD5DAE0"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+    const ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' + sheets.map((s, k) => '<Override PartName="/xl/worksheets/sheet' + (k + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>').join('') + '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>';
+    const core = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>' + esc(title) + '</dc:title><dc:creator>Fábrica de Apuntes</dc:creator></cp:coreProperties>';
+    const root = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>';
+    return zip([{ name: '[Content_Types].xml', data: ct }, { name: '_rels/.rels', data: root }, { name: 'docProps/core.xml', data: core }, { name: 'xl/workbook.xml', data: wb }, { name: 'xl/_rels/workbook.xml.rels', data: wbr }, { name: 'xl/styles.xml', data: st }].concat(files));
+  }
+  const csvOf = (sh) => '﻿' + (sh.columnas.length ? [sh.columnas] : []).concat(sh.filas).map((r) => r.map((v) => { const s = String(v == null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(';')).join('\r\n');
+  const tsvOf = (sh) => (sh.columnas.length ? [sh.columnas] : []).concat(sh.filas).map((r) => r.map((v) => String(v == null ? '' : v).replace(/[\t\n]/g, ' ')).join('\t')).join('\n');
+
+  window.__jvMaxLib = { zip, mdToDocx, xlsx, cleanSheets, csvOf, save, copy, chartPng };
+
+  /* ---------- material: adjuntos del chat, fotos, PDF escaneados, biblioteca y apuntes ---------- */
+  async function gather(a, sid, say, signal) {
+    const out = [], warn = [], s = (sid && state.subjects[sid]) || {};
+    const add = (t, x) => { x = String(x || '').replace(/\u0000/g, '').trim(); if (x.length >= 15) out.push({ t: String(t || 'Fuente').slice(0, 90), x }); else warn.push(t); };
+    if (a.texto) add('Texto del estudiante', a.texto);
+    if (a.usar_apuntes_profesor === true && sid && String(s.notes || '').trim()) add('Apuntes del profesor de «' + s.name + '»', String(s.notes).slice(0, 300000));
+    for (const id of arr(a.biblioteca_ids)) {
+      const it = state.lib && state.lib[id]; if (!it) { warn.push(String(id)); continue; } say && say('Leyendo «' + (it.title || it.fileName || 'archivo') + '»…');
+      let t = String(it.text || ''); if (t.trim().length < 15 && it.kind === 'archivo' && typeof libReadFile === 'function') { try { const r = await libReadFile({ id, ...it }); t = String((r && r.text) || ''); } catch (e) {} } add(it.title || it.fileName, t);
+    }
+    const docs = J().docs || {}, files = J().files || {}, want = arr(a.archivos).length ? a.archivos : Object.keys(docs);
+    for (const nm of want) {
+      let t = docs[nm]; if (t == null) { const k = Object.keys(docs).find((x) => norm(x) === norm(nm) || norm(x).includes(norm(nm))); if (k) t = docs[k]; }
+      if ((!t || String(t).trim().length < 15) && files[nm] && /\.pdf$/i.test(nm) && typeof pdfOcr === 'function') { say && say('Leyendo con IA el PDF escaneado «' + nm + '»…'); try { t = await pdfOcr(await files[nm].arrayBuffer()); docs[nm] = t; } catch (e) { warn.push(nm); continue; } }
+      if (t != null) add(String(nm).replace(/\.[^.]+$/, ''), t); else warn.push(nm);
+    }
+    const ph = arr(J().photos);
+    if (a.fotos !== false && ph.length) {
+      let ok = false; try { ok = !!(sample.limits && (await sample.limits()).images); } catch (e) {}
+      if (ok) {
+        const idx = arr(a.fotos_numeros).length ? a.fotos_numeros.map((x) => Number(x) - 1).filter((i) => ph[i]) : ph.map((_, i) => i);
+        for (let i = 0; i < idx.length; i += 5) {
+          const grp = idx.slice(i, i + 5); say && say('Leyendo fotos ' + (i + 1) + '–' + (i + grp.length) + ' de ' + idx.length + '…');
+          const imgs = []; for (const k of grp) { try { imgs.push(typeof _jpgDown === 'function' ? await _jpgDown(ph[k].blob, 1600) : ph[k].blob); } catch (e) {} }
+          try { const r = await aiTry(() => sample('Transcribe fielmente TODO el contenido de estas ' + imgs.length + ' fotos de apuntes/documentos, en orden: texto, fórmulas, tablas (en Markdown) y describe brevemente esquemas o dibujos. No resumas ni comentes. Separa cada foto con «--- Foto N ---».', { modelTier: 'default', cache: false, signal, images: imgs }), { label: 'fotos', signal, tries: 2 }); add('Fotos ' + (grp[0] + 1) + '–' + (grp[grp.length - 1] + 1), r && r.text); } catch (e) { if (e && e.code === 'cancelled') throw e; warn.push('fotos'); }
+        }
+      } else warn.push('fotos (esta vista no deja enviar imágenes a la IA)');
+    }
+    return { parts: out, warn };
+  }
+  const matText = (P, max) => { let t = P.parts.map((p, i) => '### FUENTE ' + (i + 1) + ': ' + p.t + '\n' + p.x).join('\n\n---\n\n'); if (t.length > (max || 150000)) t = t.slice(0, max || 150000) + '\n[…material recortado por longitud…]'; return t; };
+
+  /* ---------- tareas en segundo plano ---------- */
+  function runJob(id, kind, title, fn, done) {
+    const j = JOBS[id] = { id, kind, title, st: 'run', p: 0.02, label: 'Empezando…', err: '', t0: Date.now() }, ctl = new AbortController(); j.ctl = ctl;
+    j.retry = () => runJob(id, kind, title, fn, done);
+    (async () => {
+      try { const r = await fn((p, l) => { if (p != null) j.p = Math.max(j.p, Math.min(0.99, p)); if (l) j.label = l; }, ctl.signal); j.st = 'ok'; j.p = 1; j.res = r; try { done && done(r); } catch (e) {} }
+      catch (e) { j.st = 'err'; j.err = errTxt(e); if (!(e && e.code === 'cancelled')) note({ kind: 'error', title: 'No he podido crear «' + title + '»', msg: j.err, ms: 12000 }); }
+    })();
+    return j;
+  }
+
+  /* ---------- redacción de documentos largos con criterio ---------- */
+  const TIPOS = { apuntes: ['Apuntes', 8], trabajo: ['Trabajo académico', 10], informe: ['Informe', 8], resumen: ['Resumen', 3], ensayo: ['Ensayo', 5], guia_estudio: ['Guía de estudio', 6], examen_practica: ['Examen de práctica con soluciones', 4], carta: ['Carta / escrito', 1], articulo: ['Artículo', 4], otro: ['Documento', 4] };
+  const RULES = (cite, charts) => `Escribe en Markdown limpio:
+- NO pongas el título principal (ya va en la portada). Usa "## " para apartados y "### " para subapartados.
+- Párrafos bien redactados y con criterio; listas solo cuando aporten claridad; **negrita** para conceptos clave; tablas Markdown (| a | b |) para comparativas o datos.
+${charts ? `- Si hay datos numéricos que se entienden mejor en un gráfico, inserta un bloque así (solo con datos reales; tipo puede ser barras, lineas o circular):
+\`\`\`grafico
+tipo: barras
+titulo: Título
+unidad: €
+series: Serie A | Serie B
+Etiqueta 1: 10 | 12
+Etiqueta 2: 14 | 15
+\`\`\`` : '- No incluyas gráficos.'}
+- Usa SOLO datos, cifras, fechas y citas del material o del encargo. No inventes bibliografía, autores ni estadísticas. Si algo no está en el material, explícalo con conocimiento general riguroso sin dar cifras concretas inventadas.
+${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. «(Fuente 2: Tema 3)»).' : ''}
+- Español de España, registro adecuado al tipo de documento. Nada de frases de relleno ni introducciones del tipo «A continuación…».`;
+  async function ask(p, signal, tier) {
+    const r = await aiTry(() => sample(p, { modelTier: tier || 'default', cache: false, signal }), { label: 'doc', signal, tries: 3 });
+    return { text: String((r && r.text) || '').trim(), trunc: !!(r && r.truncated) };
+  }
+  const unfence = (t) => { t = String(t || '').trim(); const m = t.match(/^```(?:markdown|md)?[ \t]*\n([\s\S]*?)\n```\s*$/i); if (m && !/```/.test(m[1].replace(/```grafico[\s\S]*?```/g, ''))) t = m[1]; return t.replace(/^#\s+[^\n]+\n+/, '').trim(); };
+  function parseJ(t) { t = String(t || '').replace(/```(?:json)?/gi, ''); const a = t.indexOf('{'), b = t.lastIndexOf('}'); if (a < 0 || b < a) throw { code: 'invalid_json' }; try { return JSON.parse(t.slice(a, b + 1)); } catch (e) { return JSON.parse(t.slice(a, b + 1).replace(/,\s*([}\]])/g, '$1')); } }
+  async function writeDoc(a, sid, prog, signal) {
+    const tipo = TIPOS[a.tipo] ? a.tipo : 'otro', T = TIPOS[tipo], s = (sid && state.subjects[sid]) || {};
+    const pages = Math.max(1, Math.min(60, Math.round(Number(a.extension_paginas) || T[1]))), words = pages * 430;
+    prog(0.04, 'Reuniendo el material…'); const P = await gather(a, sid, (l) => prog(null, l), signal);
+    const mat = matText(P), title = String(a.titulo || '').trim().slice(0, 120) || T[0] + (s.name ? ' · ' + s.name : '');
+    const brief = ['TIPO: ' + T[0], 'TÍTULO: ' + title, s.name ? 'ASIGNATURA: ' + s.name : '', 'ENCARGO DEL ESTUDIANTE: ' + String(a.encargo || '').slice(0, 4000), a.nivel ? 'NIVEL: ' + a.nivel : '', a.tono ? 'TONO: ' + a.tono : '', a.idioma && !/espa/i.test(a.idioma) ? 'IDIOMA DEL DOCUMENTO: ' + a.idioma : '', 'EXTENSIÓN OBJETIVO: unas ' + words + ' palabras (≈' + pages + ' páginas).', tipo === 'apuntes' ? 'Son apuntes para estudiar: ordena, aclara y completa el material sin perder NADA de su contenido; elimina repeticiones; incluye definiciones, ejemplos y, al final, un resumen de ideas clave.' : '', tipo === 'examen_practica' ? 'Incluye preguntas variadas (test, cortas y de desarrollo/problemas) y al final un apartado «Soluciones» con la respuesta razonada de cada una.' : '', tipo === 'trabajo' ? 'Estructura académica: introducción, desarrollo por apartados, conclusiones y, solo si el material las trae, referencias.' : ''].filter(Boolean).join('\n');
+    const ROLE = 'Eres un redactor experto y con muy buen criterio (al nivel de Claude) que elabora documentos académicos y profesionales excelentes para un estudiante universitario.';
+    const charts = a.graficos !== false && tipo !== 'carta', cite = a.citar_fuentes === true && P.parts.length > 0;
+    let md = '';
+    if (words <= 1900 || tipo === 'carta') {
+      prog(0.2, 'Redactando…');
+      const r = await ask(ROLE + '\n\n' + brief + '\n\n' + RULES(cite, charts) + '\n\nDevuelve SOLO el documento.' + (mat ? '\n\nMATERIAL:\n"""\n' + mat + '\n"""' : ''), signal);
+      md = unfence(r.text); if (r.trunc) md += '\n\n*(El texto se cortó por longitud; pídeme que lo continúe.)*';
+    } else {
+      prog(0.1, 'Diseñando la estructura…');
+      const nS = Math.max(3, Math.min(24, Math.round(words / 1000)));
+      const o = parseJ((await ask(ROLE + ' Diseña la ESTRUCTURA del documento.\n\n' + brief + '\n\nDevuelve SOLO JSON: {"secciones":[{"titulo":"…","cubre":"qué debe explicar y con qué material, 1-3 frases","palabras":N}]} con unas ' + nS + ' secciones que sumen ≈' + words + ' palabras, en orden lógico, sin solapes.' + (mat ? '\n\nMATERIAL:\n"""\n' + mat.slice(0, 60000) + '\n"""' : ''), signal, 'default')).text);
+      const secs = arr(o.secciones || o.sections).filter((x) => x && x.titulo).slice(0, 30); if (!secs.length) throw { code: 'invalid_json' };
+      const idx = secs.map((x, i) => (i + 1) + '. ' + x.titulo).join('\n'); const out = [];
+      for (let i = 0; i < secs.length; i++) {
+        const sc = secs[i]; prog(0.14 + 0.8 * i / secs.length, 'Redactando ' + (i + 1) + ' de ' + secs.length + ' · ' + String(sc.titulo).slice(0, 60));
+        const prev = out.length ? out[out.length - 1].slice(-700) : '';
+        const r = await ask(ROLE + '\n\n' + brief + '\n\nESTRUCTURA COMPLETA (para coherencia; no repitas lo de otras secciones):\n' + idx + '\n\nESCRIBE AHORA SOLO la sección ' + (i + 1) + ': «' + sc.titulo + '» — ' + (sc.cubre || '') + ' (≈' + Math.max(250, Math.min(2200, Number(sc.palabras) || Math.round(words / secs.length))) + ' palabras). Empieza con "## ' + sc.titulo + '".' + (prev ? '\nFinal de la sección anterior (para enlazar sin repetir): «…' + prev + '»' : '') + '\n\n' + RULES(cite, charts) + (mat ? '\n\nMATERIAL:\n"""\n' + mat + '\n"""' : ''), signal);
+        let t = unfence(r.text); if (!/^##\s/.test(t)) t = '## ' + sc.titulo + '\n\n' + t; out.push(t);
+      }
+      md = out.join('\n\n');
+    }
+    if (md.length < 80) throw new Error('la IA devolvió un documento vacío');
+    if (P.warn.length) md += '\n\n---\n\n*Nota: no pude leer ' + P.warn.slice(0, 6).join(', ') + '.*';
+    prog(0.97, 'Guardando…');
+    const doc = { subjectId: sid || '', subjectName: s.name || '', title, markdown: md, kind: 'jarvis', tipo, words: typeof gdWords === 'function' ? gdWords(md) : md.split(/\s+/).length, source: 'ia', createdAt: Date.now() };
+    return doc;
+  }
+
+  /* ---------- tarjetas en el chat ---------- */
+  const css = document.createElement('style'); css.id = 'fa-jvmax-css';
+  css.textContent = '.jm{border:1px solid rgba(128,128,150,.35);border-radius:18px;background:var(--surface,#fff);color:var(--fg,#111);overflow:hidden;font-size:14px;margin:10px 0 2px}.jm-h{display:flex;gap:10px;align-items:center;padding:12px 14px 6px}.jm-i{font-size:22px;flex:none}.jm-t{display:flex;flex-direction:column;min-width:0}.jm-t b{overflow-wrap:anywhere}.jm-t span{font-size:12px;opacity:.65}.jm-b{padding:4px 14px 8px}.jm-a{display:flex;flex-wrap:wrap;gap:8px;padding:6px 12px 12px}.jm-btn{border:1px solid rgba(128,128,150,.4);background:rgba(128,128,150,.12);color:inherit;border-radius:12px;padding:8px 12px;font:inherit;font-weight:600;cursor:pointer;line-height:1.1}.jm-btn.pri{background:var(--accent,#2563eb);border-color:transparent;color:#fff}.jm-btn:focus-visible{outline:2px solid var(--accent,#2563eb);outline-offset:2px}.jm-p{height:6px;border-radius:9px;background:rgba(128,128,150,.2);overflow:hidden;margin:6px 0}.jm-p i{display:block;height:100%;background:var(--accent,#2563eb);border-radius:9px;transition:width .5s}.jm-s{font-size:12.5px;opacity:.75;margin:4px 0}.jm-pre{max-height:240px;overflow:auto;background:rgba(128,128,150,.1);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;margin:4px 0}.jm-txt{font-size:13px;line-height:1.5;opacity:.85;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;margin:4px 0}.jm-tw{overflow:auto;max-height:300px;border:1px solid rgba(128,128,150,.3);border-radius:10px;margin:4px 0}.jm-tw table{border-collapse:collapse;font-size:12.5px;min-width:100%}.jm-tw th{background:#1f3a5f;color:#fff;text-align:left;position:sticky;top:0}.jm-tw th,.jm-tw td{padding:5px 8px;border-bottom:1px solid rgba(128,128,150,.2);white-space:nowrap}.jm-tw td.n{text-align:right;font-variant-numeric:tabular-nums}.jm-tw td.f{font-style:italic;opacity:.7}.jm-sel{background:var(--surface,#fff);color:inherit;border:1px solid rgba(128,128,150,.4);border-radius:10px;padding:7px 8px;font:inherit;max-width:100%}.jm-cv{width:100%;height:auto;display:block;border-radius:10px;border:1px solid rgba(128,128,150,.25)}.jm-strip{display:flex;gap:6px;margin-top:6px;overflow-x:auto}.jm-ov{position:fixed;inset:0;z-index:94;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.jm-box{max-width:720px;width:100%;max-height:92vh;overflow:auto;background:var(--bg,#fff);border-radius:20px;padding:10px}.jm-x{margin:8px auto 4px;display:block}.jm-strip canvas{width:24%;min-width:70px;height:auto;border-radius:6px;border:1px solid rgba(128,128,150,.25);cursor:pointer}';
+  document.head.append(css);
+  const B = (t, f, pri, aria) => h('button', { class: 'jm-btn' + (pri ? ' pri' : ''), type: 'button', onclick: f, text: t, ...(aria ? { 'aria-label': aria } : {}) });
+  const frame = (ic, title, sub, body, acts) => h('div', { class: 'jm' }, h('div', { class: 'jm-h' }, h('span', { class: 'jm-i', 'aria-hidden': 'true', text: ic }), h('div', { class: 'jm-t' }, h('b', { text: title }), h('span', { text: sub }))), body, acts);
+  const progress = (body, j) => { body.replaceChildren(h('div', { class: 'jm-p', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(Math.round(j.p * 100)) }, h('i', { style: 'width:' + Math.max(3, Math.round(j.p * 100)) + '%' })), h('p', { class: 'jm-s', role: 'status', text: j.label }), h('p', { class: 'jm-s', text: 'Puedes cerrar el chat o salir: sigo trabajando y te aviso arriba al terminar.' })); };
+  const lift = (id, z) => { [0, 120, 400, 900].forEach((ms) => setTimeout(() => { const o = document.getElementById(id); if (o) o.style.zIndex = String(z); }, ms)); };
+  const plain = (md) => String(md || '').replace(/```[\s\S]*?```/g, ' ').replace(/[#*_>`|]/g, ' ').replace(/\s+/g, ' ').trim();
+  function poll(paint, node) { if (paint()) return; const t = setInterval(() => { if (!node.isConnected) { if (!document.body.contains(node)) { clearInterval(t); return; } } if (paint()) clearInterval(t); }, 1000); setTimeout(() => clearInterval(t), 30 * 60000); }
+  function subjPick(onPick) {
+    const ss = Object.entries((state && state.subjects) || {}); if (!ss.length) return null;
+    const sel = h('select', { class: 'jm-sel', 'aria-label': 'Guardar en una asignatura', onchange: () => { if (sel.value) onPick(sel.value); } }, [h('option', { value: '', text: 'Guardar en asignatura…' })].concat(ss.map(([k, s]) => h('option', { value: k, text: s.name }))));
+    return sel;
+  }
+  async function docWord(d) { const n = note({ kind: 'info', title: 'Preparando el Word…', msg: d.title, sticky: true, key: 'jm-docx' }); try { const u8 = await mdToDocx(d.title || 'Documento', [d.subjectName || '', new Date(d.createdAt || Date.now()).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })], d.markdown || ''); try { n && n.close(); } catch (e) {} await save(fname(d.title, 'docx'), u8); } catch (e) { try { n && n.close(); } catch (x) {} note({ kind: 'error', title: 'No he podido crear el Word', msg: errTxt(e) }); } }
+  async function docPdf(d, gid) { try { if (typeof pdfBuild !== 'function') throw new Error('sin PDF'); const u8 = typeof gdPdfBytes === 'function' ? gdPdfBytes(d) : pdfBuild(d.title, [d.subjectName || ''], d.markdown, d.title); await save(fname(d.title, 'pdf'), u8); } catch (e) { note({ kind: 'error', title: 'No he podido crear el PDF', msg: errTxt(e) }); } }
+
+  KINDS.fxdoc = (c) => {
+    const body = h('div', { class: 'jm-b' }), acts = h('div', { class: 'jm-a' }), node = frame('📄', c.title || 'Documento', (TIPOS[c.tipo] || TIPOS.otro)[0] + (c.subj ? ' · ' + c.subj : ''), body, acts);
+    const paint = () => {
+      const d = state.gd && state.gd[c.gid], j = JOBS[c.gid];
+      if (d) {
+        const w = d.words || 0; node.querySelector('.jm-t span').textContent = (TIPOS[d.tipo] || TIPOS.otro)[0] + ' · ≈' + Math.max(1, Math.round(w / 430)) + ' págs · ' + w.toLocaleString('es-ES') + ' palabras' + (d.subjectName ? ' · ' + d.subjectName : '');
+        body.replaceChildren(h('p', { class: 'jm-txt', text: plain(d.markdown).slice(0, 420) }));
+        const kids = [B('Leer', () => { gdOpen(c.gid); lift('gdOv', 95); }, true), B('Ver PDF', async () => { await gdOpenPdf(c.gid); lift('pdfView', 96); }), B('Descargar PDF', () => docPdf(d, c.gid)), B('Descargar Word', () => docWord(d)), B('Copiar texto', () => copy(d.markdown, 'Documento'))];
+        if (!d.subjectId) { const sp = subjPick(async (sid) => { const s = state.subjects[sid]; const nd = { ...d, subjectId: sid, subjectName: s.name }; state.gd[c.gid] = nd; await put('gendocs/' + c.gid, nd); c.subj = s.name; try { jvxRefresh(sid); } catch (e) {} note({ kind: 'ok', title: 'Guardado en «' + s.name + '»', msg: d.title, ms: 4000 }); paint(); }); if (sp) kids.push(sp); }
+        acts.replaceChildren(...kids); return true;
+      }
+      if (j && j.st === 'run') { progress(body, j); acts.replaceChildren(B('Detener', () => { try { j.ctl.abort(); } catch (e) {} })); return false; }
+      if (j && j.st === 'err') { body.replaceChildren(h('p', { class: 'jm-s', text: '⚠️ ' + j.err })); acts.replaceChildren(B('Reintentar', () => { j.retry(); poll(paint, node); })); return true; }
+      body.replaceChildren(h('p', { class: 'jm-s', text: 'No encuentro este documento: puede que se borrara.' })); acts.replaceChildren(); return true;
+    };
+    poll(paint, node); return node;
+  };
+
+  KINDS.fxdeck = (c) => {
+    const body = h('div', { class: 'jm-b' }), acts = h('div', { class: 'jm-a' }), node = frame('🎞️', c.title || 'Presentación', 'Presentación', body, acts); let shown = false;
+    const view = async () => {
+      const cv = h('canvas', { class: 'jm-cv', role: 'img', 'aria-label': 'Portada de la presentación' }), strip = h('div', { class: 'jm-strip' });
+      body.replaceChildren(h('p', { class: 'jm-s', role: 'status', text: 'Cargando vista previa…' }));
+      const d = await window.dkStudio.thumb(c.id, cv, 720, 0).catch(() => null);
+      if (!d) { body.replaceChildren(h('p', { class: 'jm-s', text: 'No encuentro esta presentación: puede que se borrara.' })); acts.replaceChildren(); return; }
+      node.querySelector('.jm-t b').textContent = d.title; node.querySelector('.jm-t span').textContent = d.slides.length + ' diapositivas · editable';
+      body.replaceChildren(cv, strip);
+      for (let i = 1; i < Math.min(5, d.slides.length); i++) { const t = h('canvas', { role: 'img', 'aria-label': 'Diapositiva ' + (i + 1) }); strip.append(t); window.dkStudio.engine.renderTo(t, window.dkStudio.engine.sceneOf(d.slides[i], i, d.slides.length, d, window.dkStudio.IM), 320).catch(() => {}); }
+      acts.replaceChildren(B('Ver y editar', () => window.dkStudio.openDeck(c.id), true), B('Descargar PDF', () => window.dkStudio.exportDeck(c.id, 'pdf')), B('Descargar PowerPoint', () => window.dkStudio.exportDeck(c.id, 'pptx')));
+    };
+    const paint = () => {
+      const j = JOBS[c.id];
+      if (j && j.st === 'run') { progress(body, j); acts.replaceChildren(B('Detener', () => { try { j.ctl.abort(); } catch (e) {} })); return false; }
+      if (j && j.st === 'err') { body.replaceChildren(h('p', { class: 'jm-s', text: '⚠️ ' + j.err })); acts.replaceChildren(B('Reintentar', () => { j.retry(); poll(paint, node); })); return true; }
+      if (!shown) { shown = true; view(); } return true;
+    };
+    poll(paint, node); return node;
+  };
+
+  KINDS.fxsheet = (c) => {
+    const sheets = arr(c.hojas), body = h('div', { class: 'jm-b' }); let cur = 0;
+    const tbl = () => {
+      const sh = sheets[cur] || { columnas: [], filas: [] }, rows = sh.filas.slice(0, 14);
+      const t = h('table', {}, sh.columnas.length ? h('tr', {}, sh.columnas.map((x) => h('th', { scope: 'col', text: String(x) }))) : null, rows.map((r) => h('tr', {}, r.map((v) => { const s = String(v == null ? '' : v), f = s.startsWith('='), n = !f && isNum(v); return h('td', { class: f ? 'f' : n ? 'n' : '', text: n ? Number(v).toLocaleString('es-ES') : s }); }))));
+      return [h('div', { class: 'jm-tw', tabindex: '0', role: 'region', 'aria-label': 'Vista previa de ' + sh.nombre }, t), h('p', { class: 'jm-s', text: sh.filas.length + ' filas' + (sh.filas.length > 14 ? ' (se muestran 14)' : '') + (sh.filas.some((r) => r.some((v) => String(v).startsWith('='))) ? ' · las fórmulas se calculan al abrirla en Excel, Numbers o Google Sheets' : '') + (sh.notas ? ' · ' + sh.notas : '') })];
+    };
+    const paint = () => { const kids = []; if (sheets.length > 1) { const sel = h('select', { class: 'jm-sel', 'aria-label': 'Hoja', onchange: () => { cur = +sel.value; paint(); } }, sheets.map((s, i) => h('option', { value: String(i), text: s.nombre }))); sel.value = String(cur); kids.push(sel); } body.replaceChildren(...kids, ...tbl()); };
+    paint();
+    const acts = h('div', { class: 'jm-a' }, B('Descargar Excel', () => save(fname(c.title, 'xlsx'), xlsx(c.title, sheets)), true), B('Descargar CSV', () => save(fname(c.title + (sheets.length > 1 ? ' - ' + sheets[cur].nombre : ''), 'csv'), csvOf(sheets[cur]))), B('Copiar tabla', () => copy(tsvOf(sheets[cur]), 'Tabla')));
+    return frame('📊', c.title || 'Hoja de cálculo', 'Hoja de cálculo · ' + sheets.length + (sheets.length === 1 ? ' hoja' : ' hojas'), body, acts);
+  };
+
+  KINDS.fxfile = (c) => {
+    const txt = String(c.contenido || ''), lines = txt.split('\n');
+    const body = h('div', { class: 'jm-b' }, h('pre', { class: 'jm-pre', tabindex: '0', 'aria-label': 'Contenido de ' + c.nombre, text: lines.slice(0, 60).join('\n') + (lines.length > 60 ? '\n…' : '') }), c.descripcion ? h('p', { class: 'jm-s', text: c.descripcion }) : null);
+    const acts = h('div', { class: 'jm-a' }, B('Descargar', () => save(c.nombre, txt), true), B('Copiar', () => copy(txt, 'Contenido')));
+    return frame('🗂️', c.nombre, 'Archivo · ' + kb(enc.encode(txt).length) + ' · ' + lines.length + ' líneas', body, acts);
+  };
+
+  /* ---------- herramientas ---------- */
+  const sch = (p, r) => ({ type: 'object', properties: p, required: r || [] });
+  function overlay(c) {
+    const bd = h('div', { class: 'jm-ov', role: 'dialog', 'aria-modal': 'true', 'aria-label': c.title || c.nombre || 'Resultado' }), box = h('div', { class: 'jm-box' });
+    const k = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }, close = () => { bd.remove(); document.removeEventListener('keydown', k, true); };
+    box.append(KINDS[c.k](c), h('button', { class: 'jm-btn jm-x', type: 'button', onclick: close, text: 'Cerrar' })); bd.append(box); bd.addEventListener('click', (e) => { if (e.target === bd) close(); }); document.addEventListener('keydown', k, true); document.body.append(bd);
+    setTimeout(() => { const b = box.querySelector('.jm-btn'); if (b) try { b.focus(); } catch (e) {} }, 50);
+  }
+  /* en el chat de Jarvis/Núcleo la tarjeta va al mensaje; en otros chats (agentes) se enseña al momento en una ventana */
+  const pushCard = (a, c) => { c.at = Date.now(); if (a && a.__cap) { a.__cap.push(c); return c; } if (state.nc && state.nc.busy) mine.push(c); else { try { overlay(c); } catch (e) { mine.push(c); } } return c; };
+  const sidOf = (a) => { const id = a && a.asignatura_id; if (id && state.subjects[id]) return id; if (a && a.asignatura) { const q = norm(a.asignatura); const k = Object.keys(state.subjects).find((x) => norm(state.subjects[x].name) === q) || Object.keys(state.subjects).find((x) => norm(state.subjects[x].name).includes(q) || q.includes(norm(state.subjects[x].name))); if (k) return k; } const j = J().subj; if (j && state.subjects[j]) return j; return ''; };
+  const MAT = { asignatura_id: { type: 'string' }, asignatura: { type: 'string', description: 'nombre de la asignatura si no sabes el id (opcional)' }, texto: { type: 'string', description: 'texto o notas que da el estudiante como material' }, archivos: { type: 'array', items: { type: 'string' }, description: 'nombres de archivos adjuntos en el chat; si no lo indicas se usan TODOS los adjuntos' }, fotos: { type: 'boolean', description: 'false = no usar las fotos adjuntas (por defecto se usan)' }, fotos_numeros: { type: 'array', items: { type: 'number' } }, biblioteca_ids: { type: 'array', items: { type: 'string' }, description: 'ids de entradas de la biblioteca (listar_documentos)' }, usar_apuntes_profesor: { type: 'boolean', description: 'true = usar los apuntes del profesor de la asignatura' } };
+  const tDoc = () => ({ name: 'crear_documento', description: 'Redacta CUALQUIER documento largo o para entregar y lo muestra en el chat con botones Leer, Ver PDF, Descargar PDF, Descargar Word y Copiar: apuntes completos a partir de archivos, PDF (incluso escaneados) o fotos adjuntas; trabajos, informes, ensayos, resúmenes, guías de estudio, exámenes de práctica con soluciones, cartas, artículos… Se redacta por apartados con criterio (sin inventar datos), con tablas y gráficos si ayudan, y sigue en segundo plano aunque el estudiante salga. Úsala siempre que pida un documento, un PDF, un Word o un texto de más de ~600 palabras, en vez de escribirlo en el chat. La asignatura es opcional.',
+    inputSchema: sch({ titulo: { type: 'string' }, tipo: { type: 'string', enum: Object.keys(TIPOS) }, encargo: { type: 'string', description: 'qué hay que redactar exactamente: tema, enfoque, estructura pedida, requisitos del profesor, etc. Sé detallado.' }, extension_paginas: { type: 'number', description: 'páginas aproximadas (1-60)' }, nivel: { type: 'string', description: 'p. ej. bachillerato, universitario, avanzado' }, tono: { type: 'string', description: 'p. ej. académico, claro, cercano, formal' }, idioma: { type: 'string' }, citar_fuentes: { type: 'boolean' }, graficos: { type: 'boolean', description: 'false = sin gráficos' }, ...MAT }, ['encargo']),
+    execute: async (a) => {
+      a = a || {}; const sid = sidOf(a), gid = uidx(), tipo = TIPOS[a.tipo] ? a.tipo : 'otro', title = String(a.titulo || '').trim().slice(0, 120) || TIPOS[tipo][0] + (sid ? ' · ' + state.subjects[sid].name : '');
+      const args = { ...a, titulo: title }; delete args.__cap;
+      runJob(gid, 'doc', title, async (prog, signal) => { const d = await writeDoc(args, sid, prog, signal); await put('gendocs/' + gid, d); state.gd[gid] = d; try { if (sid) jvxRefresh(sid); } catch (e) {} return d; },
+        (d) => note({ kind: 'ai', title: 'Documento listo', msg: d.title + ' · ≈' + Math.max(1, Math.round(d.words / 430)) + ' págs', ms: 15000, actions: [{ label: 'Leer', fn: () => { gdOpen(gid); lift('gdOv', 95); } }, { label: 'Word', fn: () => docWord(d) }] }));
+      pushCard(a, { k: 'fxdoc', gid, title, tipo, subj: sid ? state.subjects[sid].name : '' });
+      const nDocs = Object.keys(J().docs || {}).length, nPh = arr(J().photos).length;
+      return 'Encargado «' + title + '» (' + TIPOS[tipo][0].toLowerCase() + ', ≈' + Math.max(1, Math.round(Number(a.extension_paginas) || TIPOS[tipo][1])) + ' págs' + (nDocs ? ', con ' + nDocs + ' archivo(s) adjunto(s)' : '') + (nPh && a.fotos !== false ? ' y ' + nPh + ' foto(s)' : '') + '). Se está redactando en segundo plano: en el chat ya hay una tarjeta con el progreso y, al terminar, botones Leer, Ver PDF, Descargar PDF y Word. Responde en 1-2 frases (no escribas tú el documento).';
+    } });
+  const tDeck = () => ({ name: 'crear_presentacion', description: 'Crea una presentación COMPLETA (portada, índice, tablas, gráficos, indicadores, conclusiones y notas del orador) con diseño profesional y la MUESTRA en el chat con vista previa y botones Ver y editar, Descargar PDF y Descargar PowerPoint. Usa los archivos/fotos adjuntos, apuntes de la asignatura o lo que diga el estudiante. modo "directo" (por defecto) la crea ya; modo "asistente" abre el Estudio de presentaciones paso a paso solo si el estudiante quiere configurarla él (índice editable, colores…). Sigue en segundo plano aunque salga.',
+    inputSchema: sch({ tema: { type: 'string', description: 'de qué va y qué debe contar' }, titulo: { type: 'string' }, modo: { type: 'string', enum: ['directo', 'asistente'] }, diapositivas: { type: 'number' }, minutos: { type: 'number' }, finalidad: { type: 'string', enum: ['clase', 'trabajo', 'defensa', 'empresa', 'pitch', 'repaso'] }, publico: { type: 'string' }, tema_visual: { type: 'string', enum: ['ejecutivo', 'editorial', 'oceano', 'bosque', 'atardecer', 'pizarra', 'vivo'] }, color_principal: { type: 'string', description: '#rrggbb opcional' }, color_acento: { type: 'string', description: '#rrggbb opcional' }, densidad: { type: 'string', enum: ['poca', 'media', 'mucha'] }, graficos: { type: 'string', enum: ['no', 'pocos', 'auto', 'muchos'] }, notas_orador: { type: 'boolean' }, idioma: { type: 'string' }, indicaciones: { type: 'string' }, solo_datos_reales: { type: 'boolean' }, ...MAT }, []),
+    execute: async (a) => {
+      a = a || {}; const sid = sidOf(a);
+      if (a.modo === 'asistente') { try { ncClose(); } catch (e) {} window.dkStudio.open({ sid, topic: String(a.tema || '').slice(0, 1500), free: String(a.indicaciones || '').slice(0, 1500), title: String(a.titulo || '').slice(0, 120), from: 'jarvis' }); return 'Abierto el Estudio de presentaciones para que el estudiante la configure paso a paso.'; }
+      const id = uidx(), docs = J().docs || {}, names = arr(a.archivos).length ? a.archivos.filter((n) => docs[n] != null) : Object.keys(docs), title0 = String(a.titulo || a.tema || 'Presentación').slice(0, 90);
+      const photos = a.fotos === false ? [] : (arr(a.fotos_numeros).length ? a.fotos_numeros.map((x) => arr(J().photos)[Number(x) - 1]).filter(Boolean) : arr(J().photos)).map((p) => p.blob);
+      runJob(id, 'deck', title0, async (prog, signal) => {
+        const extra = await gather({ texto: a.texto, biblioteca_ids: a.biblioteca_ids, archivos: [], fotos: false }, sid, null, signal);
+        const docList = names.map((n) => ({ name: n, text: docs[n] || '' }));
+        for (const dd of docList) { if (String(dd.text).trim().length < 15 && (J().files || {})[dd.name] && /\.pdf$/i.test(dd.name) && typeof pdfOcr === 'function') { prog(null, 'Leyendo con IA «' + dd.name + '»…'); try { dd.text = await pdfOcr(await J().files[dd.name].arrayBuffer()); } catch (e) {} } }
+        const d = await window.dkStudio.quick({ id, sid, topic: a.tema || '', title: a.titulo || '', n: Number(a.diapositivas) || 0, minutes: Number(a.minutos) || 0, purpose: a.finalidad, audience: a.publico, theme: a.tema_visual, primary: a.color_principal, accent: a.color_acento, density: a.densidad, charts: a.graficos, notes: a.notas_orador, lang: a.idioma, onlyData: a.solo_datos_reales, extra: a.indicaciones, text: extra.parts.map((p) => p.t + ':\n' + p.x).join('\n\n'), docs: docList, photos, useNotes: a.usar_apuntes_profesor === true || (!!sid && !names.length && !photos.length && !a.texto && !a.tema), signal, onProg: prog });
+        JOBS[id].title = d.title; return d;
+      }, (d) => note({ kind: 'ai', title: 'Presentación lista', msg: d.title + ' · ' + d.slides.length + ' diapositivas', ms: 15000, actions: [{ label: 'Verla', fn: () => window.dkStudio.openDeck(id) }] }));
+      pushCard(a, { k: 'fxdeck', id, title: title0 });
+      return 'Creando la presentación «' + title0 + '» en segundo plano (' + (names.length ? names.length + ' archivo(s)' : 'sin archivos') + (photos.length ? ', ' + photos.length + ' foto(s)' : '') + '). En el chat ya hay una tarjeta con el progreso; al terminar mostrará la vista previa y botones Ver y editar, PDF y PowerPoint. Responde en 1-2 frases.';
+    } });
+  const tSheet = () => ({ name: 'crear_hoja_calculo', description: 'Crea una hoja de cálculo real (Excel .xlsx con cabecera, filtros, anchos y FÓRMULAS, y también CSV) y la muestra en el chat con vista previa y botones Descargar Excel, CSV y Copiar tabla. Úsala para tablas de datos, presupuestos, horarios, comparativas, ejercicios de contabilidad/estadística, plantillas, listas… Las fórmulas van como texto que empieza por "=" en sintaxis INGLESA de Excel con comas (p. ej. "=SUM(B2:B10)", "=AVERAGE(C2:C9)", "=IF(D2>5,\\"Apto\\",\\"No apto\\")"). Los números como números (no texto).',
+    inputSchema: sch({ titulo: { type: 'string' }, hojas: { type: 'array', items: { type: 'object', properties: { nombre: { type: 'string' }, columnas: { type: 'array', items: { type: 'string' } }, filas: { type: 'array', items: { type: 'array', items: { type: ['string', 'number', 'boolean', 'null'] } } }, notas: { type: 'string' } }, required: ['columnas', 'filas'] } } }, ['titulo', 'hojas']),
+    execute: async (a) => { a = a || {}; const sheets = cleanSheets(a.hojas); if (!sheets.length) throw new Error('hace falta al menos una hoja con columnas y filas'); const title = String(a.titulo || 'Hoja de cálculo').slice(0, 100); xlsx(title, sheets); const slim = sheets.map((s) => ({ ...s, filas: s.filas.slice(0, 1500) })); pushCard(a, { k: 'fxsheet', title, hojas: slim }); return 'Hoja «' + title + '» creada (' + sheets.map((s) => s.nombre + ': ' + s.filas.length + ' filas').join('; ') + ') y mostrada en el chat con botones Descargar Excel, CSV y Copiar. Comenta en 1-2 frases qué contiene; no repitas la tabla.'; } });
+  const tFile = () => ({ name: 'crear_archivo', description: 'Crea un archivo de texto de cualquier tipo y lo entrega en el chat con vista previa y botones Descargar y Copiar: código (.py, .js, .java, .c, .sql, .r, .m…), LaTeX (.tex), HTML/CSS, Markdown, JSON, CSV, .txt, .bib, guiones, etc. Úsala cuando el resultado sea código o un archivo para usar fuera, en vez de pegar bloques largos en el chat.',
+    inputSchema: sch({ nombre: { type: 'string', description: 'nombre con extensión, p. ej. «ejercicio3.py»' }, contenido: { type: 'string' }, descripcion: { type: 'string', description: 'una frase: qué es y cómo usarlo' } }, ['nombre', 'contenido']),
+    execute: async (a) => { a = a || {}; let nm = String(a.nombre || 'archivo.txt').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '').trim().slice(0, 90) || 'archivo.txt'; if (!/\.[a-z0-9]{1,6}$/i.test(nm)) nm += '.txt'; const txt = String(a.contenido || ''); if (!txt.trim()) throw new Error('el contenido está vacío'); pushCard(a, { k: 'fxfile', nombre: nm, contenido: txt.slice(0, 400000), descripcion: String(a.descripcion || '').slice(0, 300) }); return 'Archivo «' + nm + '» (' + txt.split('\n').length + ' líneas) entregado en el chat con botones Descargar y Copiar. Explica en 1-3 frases cómo usarlo; no repitas el contenido.'; } });
+  const tExp = () => ({ name: 'exportar_documento', description: 'Muestra en el chat un documento ya generado (apuntes extensos, documentos de Jarvis…) con botones Leer, Ver PDF, Descargar PDF y Descargar Word. id = id del documento generado (listar_documentos o ver_app) o "ultimo" para el más reciente (de la asignatura si se indica).',
+    inputSchema: sch({ id: { type: 'string' }, asignatura_id: { type: 'string' } }, ['id']),
+    execute: async (a) => { a = a || {}; let gid = a.id; if (!state.gd[gid]) { const list = Object.entries(state.gd || {}).filter(([, d]) => d && (!a.asignatura_id || d.subjectId === a.asignatura_id)).sort((x, y) => (y[1].createdAt || 0) - (x[1].createdAt || 0)); if (!list.length) throw new Error('no hay documentos generados' + (a.asignatura_id ? ' en esa asignatura' : '')); if (a.id === 'ultimo' || !a.id) gid = list[0][0]; else { const q = norm(a.id), m = list.find(([, d]) => norm(d.title).includes(q)); if (!m) throw new Error('no encuentro ese documento'); gid = m[0]; } } const d = state.gd[gid]; pushCard(a, { k: 'fxdoc', gid, title: d.title, tipo: d.tipo || 'apuntes', subj: d.subjectName || '' }); return 'Mostrado «' + d.title + '» con botones Leer, PDF y Word.'; } });
+  const NEW = ['crear_documento', 'crear_presentacion', 'crear_hoja_calculo', 'crear_archivo', 'exportar_documento'];
+  const MK = { crear_documento: tDoc, crear_presentacion: tDeck, crear_hoja_calculo: tSheet, crear_archivo: tFile, exportar_documento: tExp };
+
+  /* ---------- enganches con Jarvis y los agentes ---------- */
+  try { const t0 = window.jvCardsTake; window.jvCardsTake = function (bot) { try { t0 && t0(bot); } catch (e) {} if (mine.length && bot) bot.cards = (bot.cards || []).concat(mine.splice(0)).slice(0, 6); }; } catch (e) {}
+  try { const r0 = window.jvCardsReset; window.jvCardsReset = function () { mine.length = 0; try { r0 && r0(); } catch (e) {} }; } catch (e) {}
+  try { const n0 = window.jvCardsNode; window.jvCardsNode = function (cards) { const a0 = cards || []; if (!a0.some((c) => c && KINDS[c.k])) return n0(cards); const out = a0.map((c) => { if (c && KINDS[c.k]) { try { return KINDS[c.k](c); } catch (e) { return null; } } const w = n0([c]); return w ? w.firstChild : null; }).filter(Boolean); return out.length ? h('div', { class: 'jvr-wrap' }, out) : null; }; } catch (e) {}
+  try { const b0 = window.jvxBase; window.jvxBase = function () { let all = []; try { all = b0(); } catch (e) { all = []; } return all.filter((x) => x && !NEW.includes(x.name)).concat(NEW.map((n) => MK[n]())); }; } catch (e) {}
+  try { const c = AG_TOOLCAT.find((x) => x.key === 'estudio') || AG_TOOLCAT[0]; if (c) NEW.forEach((n) => { if (!c.names.includes(n)) c.names.push(n); }); } catch (e) {}
+  try { if (Array.isArray(JV_CORE_NAMES)) NEW.forEach((n) => { if (!JV_CORE_NAMES.includes(n)) JV_CORE_NAMES.push(n); }); } catch (e) {}
+  try { const p0 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p0(tl, text, att, BASE); try { const have = new Set(r.map((x) => x && x.name)); r = r.concat((tl || []).filter((x) => x && NEW.concat(['crear_grafica']).includes(x.name) && !have.has(x.name))); } catch (e) {} return r; }; } catch (e) {}
+  try { const j0 = window.jvxHint; window.jvxHint = function () { return String(j0.apply(this, arguments) || '') + '\n\nCAPACIDADES COMPLETAS (como un chat de Claude): puedes elaborar CUALQUIER cosa y entregarla lista. Nunca digas que no puedes crear archivos.\n- Documentos (apuntes en PDF/Word desde archivos, PDF escaneados o fotos; trabajos, informes, ensayos, guías, exámenes de práctica, cartas…): crear_documento. Si el texto pasaría de ~600 palabras o es para guardar/entregar, úsala en vez de escribirlo en el chat.\n- Presentaciones: crear_presentacion la crea COMPLETA directamente (modo directo) y la muestra; modo asistente solo si el estudiante quiere configurarla paso a paso.\n- Hojas de cálculo/Excel con fórmulas: crear_hoja_calculo. Código, LaTeX, HTML, JSON, CSV u otros archivos: crear_archivo. Gráficas: crear_grafica. Volver a dar un documento ya generado en PDF/Word: exportar_documento.\n- Si faltan datos imprescindibles (p. ej. el tema), pregunta UNA vez; si no, haz la mejor versión con criterio y dilo. Para dudas y explicaciones normales, responde en el chat como siempre (puedes usar Markdown, tablas y fórmulas).'; }; } catch (e) {}
+  window.__jvMaxLib.KINDS = KINDS; window.__jvMaxLib.docWord = docWord; window.__jvMaxLib.JOBS = JOBS; window.__jvMaxLib.writeDoc = writeDoc; window.__jvMaxLib.gather = gather;
 })();
 
 </script>
