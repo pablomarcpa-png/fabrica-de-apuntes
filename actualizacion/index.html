@@ -14439,7 +14439,7 @@ async function lfView(it, goPage) {
     body.replaceChildren(h('p', { class: 'small pv-n', text: n + (n === 1 ? ' página' : ' páginas') + ' · se muestra tal cual el archivo original' }));
     root._slots = slots;
     for (let i = 1; i <= n; i++) { const sl = h('div', { class: 'pv-pg', style: 'aspect-ratio:' + v0.width + ' / ' + v0.height }, h('span', { class: 'pv-pn', text: 'Página ' + i + ' de ' + n })); sl.dataset.i = String(i); sl._an = h('div', { class: 'pv-an' }); sl._ed = h('div', { class: 'pv-ed-l' }); sl.append(sl._an, sl._ed); slots.push(sl); body.append(sl); }
-    root._an = ((state.lib[id] && state.lib[id].annots) || it.annots || []).filter((a) => a && a.page && a.text).slice(); pvAnPaint(root); pvSheetsPaint(root); root._ed = ((state.lib[id] && state.lib[id].edits) || it.edits || []).filter((a) => a && a.page && a.t).slice(); pvEdPaint(root);
+    root._an = ((state.lib[id] && state.lib[id].annots) || it.annots || []).filter((a) => a && a.page && a.text).slice(); pvAnPaint(root); pvSheetsPaint(root); root._ed = ((state.lib[id] && state.lib[id].edits) || it.edits || []).filter((a) => a && a.page && a.t).slice(); pvEdPaint(root); try { if (window.pvEdLoad) pvEdLoad(root, id); } catch (e) {}
     const render = async (sl) => {
       if (sl._done) return; sl._done = true;
       try { const pg = await doc.getPage(+sl.dataset.i), v1 = pg.getViewport({ scale: 1 }), dpr = Math.min(2, window.devicePixelRatio || 1), vp = pg.getViewport({ scale: (Math.min(sl.clientWidth || 360, 900) / v1.width) * dpr }), c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height); c.setAttribute('role', 'img'); c.setAttribute('aria-label', 'Página ' + sl.dataset.i);
@@ -14576,7 +14576,7 @@ function pvEdToggle(root) {
   pvEdPaint(root);
 }
 async function pvEdAddPhoto(root, file) {
-  if (!file) return; toast('Añadiendo foto…');
+  if (!file) return; { const s0 = root.querySelector('.pvs-chip'); if (s0) { s0.textContent = 'Añadiendo foto…'; s0.className = 'pvs-chip busy'; } }
   try {
     const bmp = await createImageBitmap(file), enc = async (mx, q) => { const sc = Math.min(1, mx / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas'); c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); return { c, blob: await new Promise((res) => c.toBlob(res, 'image/jpeg', q)) }; };
     let { c, blob } = await enc(1400, 0.82), src = '';
@@ -25664,6 +25664,114 @@ ${cite ? '- Cuando uses el material, indica entre paréntesis la fuente (p. ej. 
   try { const p0 = window.ncPickTools; window.ncPickTools = function (tl, text, att, BASE) { let r = p0(tl, text, att, BASE); try { const have = new Set(r.map((x) => x && x.name)); r = r.concat((tl || []).filter((x) => x && NEW.concat(['crear_grafica']).includes(x.name) && !have.has(x.name))); } catch (e) {} return r; }; } catch (e) {}
   try { const j0 = window.jvxHint; window.jvxHint = function () { return String(j0.apply(this, arguments) || '') + '\n\nCAPACIDADES COMPLETAS (como un chat de Claude): puedes elaborar CUALQUIER cosa y entregarla lista. Nunca digas que no puedes crear archivos.\n- Documentos (apuntes en PDF/Word desde archivos, PDF escaneados o fotos; trabajos, informes, ensayos, guías, exámenes de práctica, cartas…): crear_documento. Si el texto pasaría de ~600 palabras o es para guardar/entregar, úsala en vez de escribirlo en el chat.\n- Presentaciones: crear_presentacion la crea COMPLETA directamente (modo directo) y la muestra; modo asistente solo si el estudiante quiere configurarla paso a paso.\n- Hojas de cálculo/Excel con fórmulas: crear_hoja_calculo. Código, LaTeX, HTML, JSON, CSV u otros archivos: crear_archivo. Gráficas: crear_grafica. Volver a dar un documento ya generado en PDF/Word: exportar_documento.\n- Si faltan datos imprescindibles (p. ej. el tema), pregunta UNA vez; si no, haz la mejor versión con criterio y dilo. Para dudas y explicaciones normales, responde en el chat como siempre (puedes usar Markdown, tablas y fórmulas).'; }; } catch (e) {}
   window.__jvMaxLib.KINDS = KINDS; window.__jvMaxLib.docWord = docWord; window.__jvMaxLib.JOBS = JOBS; window.__jvMaxLib.writeDoc = writeDoc; window.__jvMaxLib.gather = gather;
+})();
+
+</script>
+<script id="fa-jvpdfsave">
+/* Edición de PDF: autoguardado silencioso (en un documento aparte, ligero) + indicador de estado + botón «Guardar» que lo comprueba */
+(function () {
+  'use strict';
+  if (window.__faPdfSave) return; window.__faPdfSave = true;
+  const KEY = (id) => 'library/' + id + '/edits/main';
+  const ST = new WeakMap(), LIVE = new Set();
+  const DEL = [1500, 3000, 6000, 12000, 30000];
+  const st = (root) => { let s = ST.get(root); if (!s) { s = { dirty: false, saving: false, err: '', at: 0, tries: 0, timer: 0, again: false, p: null }; ST.set(root, s); } return s; };
+  const hm = (t) => new Date(t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  const clean = (o) => JSON.parse(JSON.stringify(o));
+  const note = (o) => { try { return window.faNotify(o); } catch (e) { try { window.toast(o.title + (o.msg ? ': ' + o.msg : '')); } catch (x) {} } };
+  async function reacquire() { try { const d = await window.claude.use('db'); if (d) { try { db = d; } catch (e) {} } } catch (e) {} }
+  function track(root) { const s = st(root); if (s.dirty || s.saving) LIVE.add(root); else LIVE.delete(root); }
+
+  function chip(root) {
+    track(root); const el = root.querySelector && root.querySelector('.pvs-chip'); if (!el) return; const s = st(root);
+    let t = '', k = 'ok';
+    if (s.err && !s.saving) { t = s.err; k = 'err'; }
+    else if (s.saving || s.dirty) { t = 'Guardando…'; k = 'busy'; }
+    else t = '✓ Guardado';
+    el.textContent = t; el.className = 'pvs-chip ' + k; el.title = k === 'ok' ? 'Tus cambios se guardan solos' + (s.at ? ' · último guardado a las ' + hm(s.at) : '') : t;
+  }
+  function schedule(root, ms) { const s = st(root); clearTimeout(s.timer); s.timer = setTimeout(() => write(root), ms); }
+
+  async function write(root) {
+    const s = st(root), it = root._it || {}, id = it.id || root._pvId;
+    if (!id || it.tmp) { s.dirty = false; chip(root); return true; }
+    if (s.saving) { s.again = true; try { await s.p; } catch (e) {} return s.dirty || s.again ? write(root) : !s.err; }
+    clearTimeout(s.timer); s.saving = true; s.dirty = false; s.again = false; chip(root);
+    const edits = (root._ed || []).slice(0, 900);
+    s.p = (async () => {
+      try {
+        if (!db) { await reacquire(); if (!db) throw { code: 'no_db' }; }
+        await db.doc(KEY(id)).set(clean({ edits, n: edits.length, at: Date.now() }));
+        try { if (state.lib && state.lib[id]) state.lib[id] = { ...state.lib[id], edits }; } catch (e) {}
+        s.at = Date.now(); s.err = ''; s.tries = 0; s.saving = false;
+        if (s.again || s.dirty) schedule(root, 250);
+        chip(root); return true;
+      } catch (e) {
+        s.saving = false; s.dirty = true; s.tries++;
+        const code = String((e && (e.code || e.message)) || '');
+        if (/too.?large|payload|size|exceed|invalid.?argument/i.test(code)) { s.err = 'Demasiado grande: quita alguna foto'; s.dirty = false; chip(root); note({ kind: 'error', title: 'No se puede guardar la edición', msg: 'El PDF editado pesa demasiado (sobre todo por las fotos). Quita alguna y se guardará solo.', key: 'pvs-big' }); return false; }
+        if (code === 'quota_exceeded') { s.err = 'Almacenamiento lleno'; chip(root); note({ kind: 'error', title: 'Almacenamiento lleno', msg: 'Borra archivos que no uses para poder guardar la edición.', key: 'pvs-quota' }); return false; }
+        s.err = navigator.onLine === false ? 'Sin conexión · se guardará al volver' : s.tries >= 3 ? 'Sin guardar · reintentando' : '';
+        if (s.tries >= 1) reacquire();
+        schedule(root, navigator.onLine === false ? 5000 : DEL[Math.min(s.tries - 1, DEL.length - 1)]);
+        chip(root); return false;
+      }
+    })();
+    return s.p;
+  }
+
+  /* sustituye al guardado anterior: sin avisos, con reintentos silenciosos */
+  window.pvEdSave = function (root, now) {
+    if (!root) return; const s = st(root); s.dirty = true; clearTimeout(root._edT); chip(root);
+    if (now) return write(root);
+    schedule(root, 800);
+  };
+
+  /* al abrir: carga la última edición guardada aparte (si existe) */
+  window.pvEdLoad = async function (root, id) {
+    if (!root || !id || !db) return; root._pvId = id;
+    try {
+      const sn = await db.doc(KEY(id)).get(); const v = sn && typeof sn.data === 'function' ? sn.data() : null;
+      const s = st(root); if (!v || !Array.isArray(v.edits) || s.dirty || s.saving) { if (v && v.at) { s.at = v.at; chip(root); } return; }
+      root._ed = v.edits.filter((a) => a && a.page && a.t); s.at = v.at || 0;
+      try { if (state.lib && state.lib[id]) state.lib[id] = { ...state.lib[id], edits: root._ed }; } catch (e) {}
+      try { pvEdPaint(root); } catch (e) {} chip(root);
+    } catch (e) {}
+  };
+
+  async function manual(root, btn) {
+    const s = st(root), it = root._it || {}, id = it.id || root._pvId;
+    if (!id || it.tmp) { note({ kind: 'info', title: 'Este archivo no se guarda', msg: 'Es una vista temporal: guárdalo en la biblioteca para conservar la edición.', key: 'pvs-man' }); return; }
+    btn.disabled = true; const old = btn.textContent; btn.textContent = 'Guardando…'; s.dirty = true; s.err = ''; s.tries = 0;
+    let ok = false, n = (root._ed || []).length;
+    try { ok = await write(root); if (ok) { const sn = await db.doc(KEY(id)).get(); const v = sn && typeof sn.data === 'function' ? sn.data() : null; ok = !!v && Array.isArray(v.edits) && v.edits.length === Math.min(900, n); } } catch (e) { ok = false; }
+    btn.disabled = false; btn.textContent = old;
+    if (ok) note({ kind: 'ok', title: 'Edición guardada', msg: 'Comprobado: ' + (n ? n + (n === 1 ? ' cambio guardado' : ' cambios guardados') : 'no hay cambios') + ' · ' + hm(Date.now()), key: 'pvs-man', ms: 4000 });
+    else { s.dirty = true; schedule(root, 1500); note({ kind: 'error', title: 'Aún no se ha podido guardar', msg: 'Tu edición sigue en pantalla y lo reintento solo. No cierres la página hasta ver «Guardado».', key: 'pvs-man', actions: [{ label: 'Reintentar', fn: () => manual(root, btn) }] }); }
+    chip(root);
+  }
+
+  const b0 = window.pvEdBarPaint;
+  if (typeof b0 === 'function') window.pvEdBarPaint = function (root) {
+    const r = b0.apply(this, arguments);
+    try {
+      const bar = root.querySelector('.pv-edtb'); if (bar && !bar.querySelector('.pvs')) {
+        const btn = h('button', { class: 'btn pvs-btn', type: 'button', title: 'Guarda ahora y comprueba que se ha guardado', onclick: () => manual(root, btn) }, '💾 Guardar');
+        bar.append(h('span', { class: 'pvs' }, h('span', { class: 'pvs-chip ok', role: 'status', 'aria-live': 'polite', text: 'Guardado' }), btn)); chip(root);
+      }
+    } catch (e) {}
+    return r;
+  };
+  const c0 = window.closeLfView;
+  if (typeof c0 === 'function') window.closeLfView = function () {
+    try { const m = document.getElementById('pdfView'); if (m && ST.has(m)) { const s = ST.get(m); if (s.dirty || s.saving) write(m); } } catch (e) {}
+    return c0.apply(this, arguments);
+  };
+  window.addEventListener('beforeunload', (e) => { const any = [...LIVE].some((r) => { const s = ST.get(r); return s && (s.dirty || s.saving); }); if (any) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('online', () => { LIVE.forEach((r) => { const s = ST.get(r); if (s && s.dirty) schedule(r, 300); }); });
+  const css = document.createElement('style'); css.textContent = '.pvs{display:inline-flex;align-items:center;gap:6px;margin-left:auto;flex:none;position:sticky;right:-12px;padding:0 12px 0 10px;background:var(--surface,#fff);box-shadow:-10px 0 12px -6px var(--surface,#fff)}@media (max-width:560px){.pvs-chip{max-width:110px;overflow:hidden;text-overflow:ellipsis}.pvs-btn{padding:6px 9px!important}}.pvs-chip{font-size:12px;padding:5px 9px;border-radius:999px;background:rgba(34,160,90,.14);color:#16794a;white-space:nowrap;font-weight:600}.pvs-chip.busy{background:rgba(128,128,150,.16);color:inherit;opacity:.85}.pvs-chip.err{background:rgba(220,60,60,.14);color:#b42318}@media (prefers-color-scheme:dark){.pvs-chip{color:#5ad69a}.pvs-chip.err{color:#ff8a80}}';
+  document.head.append(css);
+  window.__pvSave = { st, write, KEY };
 })();
 
 </script>
